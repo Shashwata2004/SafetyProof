@@ -223,7 +223,9 @@ function App() {
   }
   if (role === "admin" && token) {
     const view =
-      requestedView === "reviewers" || requestedView === "manager-applications"
+      requestedView === "reviewers" ||
+      requestedView === "manager-applications" ||
+      requestedView === "factory-assignments"
         ? requestedView
         : "factories";
     return (

@@ -2872,15 +2872,6 @@
               }
             ],
             "title": "Role Type"
-          },
-          "factory_ids": {
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "type": "array",
-            "maxItems": 30,
-            "title": "Factory Ids"
           }
         },
         "additionalProperties": false,

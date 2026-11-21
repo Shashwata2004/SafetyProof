@@ -1103,8 +1103,6 @@ export interface components {
             organization?: string | null;
             /** Role Type */
             role_type?: ("Compliance Officer" | "Independent Auditor" | "Buyer Sustainability Team") | null;
-            /** Factory Ids */
-            factory_ids?: string[];
         };
         /** RunInput */
         RunInput: {

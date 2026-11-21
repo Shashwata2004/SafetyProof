@@ -50,7 +50,6 @@ class Reviewer(Identity):
     full_name: str = Field(min_length=1, max_length=160)
     organization: str | None = Field(default=None, max_length=160)
     role_type: ROLE_TYPES | None = None
-    factory_ids: list[UUID] = Field(default_factory=list, max_length=30)
 
 
 class Assignments(BaseModel):
@@ -475,8 +474,6 @@ def account_router(user, db_dep):
 
     @router.post("/admin/reviewers", status_code=201)
     async def add_reviewer(body: Reviewer, u=Depends(admin), db=Depends(db_dep)):
-        for fid in set(body.factory_ids):
-            await factory(db, fid)
         uid = await provision(
             db,
             body.email,
@@ -488,7 +485,6 @@ def account_router(user, db_dep):
                 "role_type": body.role_type,
             },
         )
-        await replace_assignments(db, uid, body.factory_ids)
         return {"id": uid, **await invite(db, uid)}
 
     @router.post("/admin/reviewers/{uid}/resend-invite")

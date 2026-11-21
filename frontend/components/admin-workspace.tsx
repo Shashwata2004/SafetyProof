@@ -60,7 +60,17 @@ type CaseSummary = {
   tasks: { id: string; title: string; due_on: string; status: string }[];
   documents: { id: string; title: string }[];
 };
-type View = "factories" | "reviewers" | "manager-applications";
+type View =
+  | "factories"
+  | "reviewers"
+  | "factory-assignments"
+  | "manager-applications";
+const organizations = [
+  "BGMEA",
+  "BKMEA",
+  "Department of Inspection for Factories and Establishments (DIFE)",
+  "RMG Sustainability Council (RSC)",
+];
 
 function status(value: string) {
   return value.replaceAll("_", " ");
@@ -79,7 +89,9 @@ export function AdminWorkspace({
 }) {
   const cache = useQueryClient();
   const [add, setAdd] = useState(false);
-  const [edit, setEdit] = useState<Reviewer | null>(null);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [assignmentSaved, setAssignmentSaved] = useState(false);
+  const [organization, setOrganization] = useState("");
   const [selected, setSelected] = useState("");
   const [caseId, setCaseId] = useState("");
   const details = useQuery({
@@ -102,13 +114,16 @@ export function AdminWorkspace({
   const reviewers = useQuery({
     queryKey: ["admin-reviewers", token],
     queryFn: () => api<Reviewer[]>("/v1/admin/reviewers", token),
-    enabled: view === "reviewers",
+    enabled: view === "reviewers" || view === "factory-assignments",
   });
   const managers = useQuery({
     queryKey: ["admin-applications", token],
     queryFn: () => api<Application[]>("/v1/admin/manager-applications", token),
     enabled: view === "manager-applications",
   });
+  const assignees =
+    reviewers.data?.filter((row) => row.status !== "deactivated") || [];
+  const assignee = assignees.find((row) => row.id === assigneeId);
   const names = new Map(factories.data?.map((f) => [f.id, f.name]));
 
   async function perform(action: () => Promise<void>) {
@@ -126,29 +141,37 @@ export function AdminWorkspace({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     await perform(async () => {
-      const ids = form.getAll("factory_ids");
-      if (edit) {
-        await api(`/v1/admin/reviewers/${edit.id}/factories`, token, "POST", {
-          factory_ids: ids,
-        });
-        setEdit(null);
-      } else {
-        const response = await api<{ invite_url: string }>(
-          "/v1/admin/reviewers",
-          token,
-          "POST",
-          {
-            full_name: form.get("full_name"),
-            email: form.get("email"),
-            organization: form.get("organization") || null,
-            role_type: form.get("role_type") || null,
-            factory_ids: ids,
-          },
-        );
-        setAdd(false);
-        setCopied(false);
-        setInvite(response.invite_url);
-      }
+      const response = await api<{ invite_url: string }>(
+        "/v1/admin/reviewers",
+        token,
+        "POST",
+        {
+          full_name: form.get("full_name"),
+          email: form.get("email"),
+          organization:
+            (organization === "custom"
+              ? String(form.get("custom_organization")).trim()
+              : organization) || null,
+          role_type: form.get("role_type") || null,
+        },
+      );
+      setAdd(false);
+      setCopied(false);
+      setInvite(response.invite_url);
+      await reviewers.refetch();
+    });
+  }
+
+  async function saveAssignments(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!assignee) return;
+    const ids = new FormData(event.currentTarget).getAll("factory_ids");
+    setAssignmentSaved(false);
+    await perform(async () => {
+      await api(`/v1/admin/reviewers/${assignee.id}/factories`, token, "POST", {
+        factory_ids: ids,
+      });
+      setAssignmentSaved(true);
       await Promise.all([reviewers.refetch(), factories.refetch()]);
     });
   }
@@ -165,6 +188,7 @@ export function AdminWorkspace({
             [
               ["factories", "Factories"],
               ["reviewers", "Reviewers"],
+              ["factory-assignments", "Factory assignments"],
               ["manager-applications", "Manager applications"],
             ] as const
           ).map(([id, label]) => (
@@ -182,7 +206,7 @@ export function AdminWorkspace({
             </button>
           ))}
         </nav>
-        {error && !add && !edit && !deactivate && <ErrorNote text={error} />}
+        {error && !add && !deactivate && <ErrorNote text={error} />}
         {view === "factories" && (
           <section className="panel">
             <div className="section-head">
@@ -235,6 +259,7 @@ export function AdminWorkspace({
                 className="primary"
                 onClick={() => {
                   setError("");
+                  setOrganization("");
                   setAdd(true);
                 }}
               >
@@ -249,6 +274,7 @@ export function AdminWorkspace({
                   <strong>{row.full_name}</strong>
                   <small>
                     {row.email} · {row.role_type || "Role type unspecified"}
+                    {row.organization && ` · ${row.organization}`}
                   </small>
                   <small>
                     {dateText(row.created_at)} ·{" "}
@@ -285,14 +311,6 @@ export function AdminWorkspace({
                       <button
                         onClick={() => {
                           setError("");
-                          setEdit(row);
-                        }}
-                      >
-                        Assign factories
-                      </button>
-                      <button
-                        onClick={() => {
-                          setError("");
                           setDeactivate({ id: row.id, name: row.full_name });
                         }}
                       >
@@ -303,6 +321,78 @@ export function AdminWorkspace({
                 </div>
               </div>
             ))}
+          </section>
+        )}
+        {view === "factory-assignments" && (
+          <section className="panel">
+            <div className="section-head">
+              <div>
+                <h1>Factory assignments</h1>
+                <p>Choose a reviewer and the factories they can access.</p>
+              </div>
+            </div>
+            <div className="panel-pad admin-form">
+              {reviewers.isLoading && <Busy />}
+              {reviewers.error && <ErrorNote text={message(reviewers.error)} />}
+              {factories.error && <ErrorNote text={message(factories.error)} />}
+              <label>
+                Reviewer
+                <select
+                  value={assigneeId}
+                  disabled={busy || !assignees.length}
+                  onChange={(event) => {
+                    setAssigneeId(event.target.value);
+                    setAssignmentSaved(false);
+                    setError("");
+                  }}
+                >
+                  <option value="">Choose a reviewer</option>
+                  {assignees.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.full_name} · {row.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!reviewers.isLoading &&
+                !reviewers.error &&
+                !assignees.length && <p>Add a reviewer first.</p>}
+              {assignee && factories.isSuccess && (
+                <form
+                  key={assignee.id}
+                  className="admin-form"
+                  onSubmit={saveAssignments}
+                  onChange={() => setAssignmentSaved(false)}
+                >
+                  <fieldset disabled={busy}>
+                    <legend>Factories</legend>
+                    {factories.data.map((factory) => (
+                      <label
+                        className="inline-actions"
+                        style={{ display: "flex" }}
+                        key={factory.id}
+                      >
+                        <input
+                          type="checkbox"
+                          name="factory_ids"
+                          value={factory.id}
+                          defaultChecked={assignee.reviewer_factories.some(
+                            (row) => row.factory_id === factory.id,
+                          )}
+                        />
+                        {factory.name}
+                      </label>
+                    ))}
+                  </fieldset>
+                  <div>
+                    <button className="primary" disabled={busy}>
+                      Save assignments
+                    </button>
+                  </div>
+                  {assignmentSaved && <p role="status">Assignments saved.</p>}
+                </form>
+              )}
+            </div>
           </section>
         )}
         {view === "manager-applications" && (
@@ -409,67 +499,58 @@ export function AdminWorkspace({
           )}
         </Modal>
       )}
-      {(add || edit) && (
-        <Modal
-          title={edit ? "Assign reviewer factories" : "Add reviewer"}
-          close={() => {
-            setAdd(false);
-            setEdit(null);
-          }}
-        >
+      {add && (
+        <Modal title="Add reviewer" close={() => setAdd(false)}>
           <form className="admin-form" onSubmit={addReviewer}>
-            {!edit && (
-              <>
-                <label>
-                  Full name
-                  <input name="full_name" maxLength={160} required />
-                </label>
-                <label>
-                  Email
-                  <input name="email" type="email" maxLength={254} required />
-                </label>
-                <label>
-                  Organization (optional)
-                  <input name="organization" maxLength={160} />
-                </label>
-                <label>
-                  Role type (optional)
-                  <select name="role_type">
-                    <option value="">Choose role type</option>
-                    {[
-                      "Compliance Officer",
-                      "Independent Auditor",
-                      "Buyer Sustainability Team",
-                    ].map((type) => (
-                      <option key={type}>{type}</option>
-                    ))}
-                  </select>
-                </label>
-              </>
+            <label>
+              Full name
+              <input name="full_name" maxLength={160} required />
+            </label>
+            <label>
+              Email
+              <input name="email" type="email" maxLength={254} required />
+            </label>
+            <label>
+              <span>Organization (optional)</span>
+              <select
+                aria-label="Organization (optional)"
+                value={organization}
+                onChange={(event) => setOrganization(event.target.value)}
+              >
+                <option value="">Choose an organization</option>
+                {organizations.map((name) => (
+                  <option key={name}>{name}</option>
+                ))}
+                <option value="custom">Enter another organization</option>
+              </select>
+            </label>
+            {organization === "custom" && (
+              <label>
+                Organization name
+                <input
+                  name="custom_organization"
+                  maxLength={160}
+                  required
+                  pattern={String.raw`.*\S.*`}
+                />
+              </label>
             )}
-            <fieldset>
-              <legend>Assigned factories</legend>
-              {factories.data?.map((factory) => (
-                <label
-                  className="inline-actions"
-                  style={{ display: "flex" }}
-                  key={factory.id}
-                >
-                  <input
-                    type="checkbox"
-                    name="factory_ids"
-                    value={factory.id}
-                    defaultChecked={edit?.reviewer_factories.some(
-                      (f) => f.factory_id === factory.id,
-                    )}
-                  />
-                  {factory.name}
-                </label>
-              ))}
-            </fieldset>
+            <label>
+              Role type (optional)
+              <select name="role_type">
+                <option value="">Choose role type</option>
+                {[
+                  "Compliance Officer",
+                  "Independent Auditor",
+                  "Buyer Sustainability Team",
+                ].map((type) => (
+                  <option key={type}>{type}</option>
+                ))}
+              </select>
+            </label>
             {error && <ErrorNote text={error} />}
-            <button className="primary" disabled={busy || factories.isLoading}>
-              {edit ? "Save assignments" : "Create reviewer"}
+            <button className="primary" disabled={busy}>
+              Create reviewer
             </button>
           </form>
         </Modal>

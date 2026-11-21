@@ -158,12 +158,28 @@ async def test_account_onboarding(monkeypatch):
                 json={
                     "email": reviewer_email,
                     "full_name": "Fictional Reviewer",
-                    "factory_ids": [first, second],
+                    "organization": "Fictional Dhaka Auditors",
                 },
             )
             uid = created_response.json()["id"]
             created.append(uid)
             assert (await profile(reviewer_email))["status"] == "pending"
+            assert (await profile(reviewer_email))[
+                "organization"
+            ] == "Fictional Dhaka Auditors"
+            assert (
+                await db.rows(
+                    "reviewer_factories", filters={"reviewer_id": "eq." + uid}
+                )
+                == []
+            )
+            await call(
+                "POST",
+                f"/admin/reviewers/{uid}/factories",
+                headers=admin,
+                json={"factory_ids": [first, second]},
+            )
+
             await login(reviewer_email, status=401)
             old_token = token(created_response)
             await db.call(
