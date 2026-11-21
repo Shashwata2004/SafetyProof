@@ -344,17 +344,49 @@ async def test_case_review_and_permissions(monkeypatch):
             )
 
             async def submit(filename, raw):
-                response = await api.post(
-                    "/v1" + task_path + "/evidence",
-                    params={"filename": filename},
-                    headers={
-                        **headers[factory_user],
-                        "Content-Type": "application/pdf",
-                    },
-                    content=raw,
+                ticket = await call(
+                    "POST",
+                    task_path + "/uploads",
+                    role=factory_user,
+                    body={"filename": filename},
+                    status=201,
                 )
-                assert response.status_code == 201, response.text
-                return response.json()
+                uploaded = await remote.put(
+                    ticket["upload_url"],
+                    content=raw,
+                    headers={"Content-Type": "application/pdf"},
+                )
+                assert uploaded.is_success, uploaded.text
+                body = {"receipt": ticket["receipt"]}
+                await call(
+                    "POST",
+                    task_path + "/uploads/finalize",
+                    role="reviewer",
+                    body=body,
+                    status=403,
+                )
+                await call(
+                    "POST",
+                    task_path + "/uploads/finalize",
+                    role=factory_user,
+                    body={"receipt": ticket["receipt"] + "x"},
+                    status=422,
+                )
+                result = await call(
+                    "POST",
+                    task_path + "/uploads/finalize",
+                    role=factory_user,
+                    body=body,
+                    status=201,
+                )
+                assert result == await call(
+                    "POST",
+                    task_path + "/uploads/finalize",
+                    role=factory_user,
+                    body=body,
+                    status=201,
+                )
+                return result
 
             await submit(
                 "first-pass.pdf",
@@ -449,7 +481,7 @@ async def test_interrupted_job_reclaims_lease(monkeypatch):
                 params={"id": "eq." + jid},
                 data={"lease_until": "2000-01-01T00:00:00Z"},
             )
-            resumed = await db.rpc("claim")
+            resumed = await db.rpc("claim_job", jid=jid)
             assert resumed["id"] == jid and resumed["lease"] != original["lease"]
             from safetyproof.platform import PlatformError
 
@@ -464,6 +496,19 @@ async def test_interrupted_job_reclaims_lease(monkeypatch):
                 op="progress",
                 payload={"completed": 1},
             )
+            await db.rpc("yield_job", jid=jid, ticket=resumed["lease"])
+            yielded = await db.one("jobs", jid)
+            assert (
+                yielded["state"] == "queued"
+                and yielded["attempts"] == resumed["attempts"] - 1
+            )
+            with pytest.raises(PlatformError, match="Job lease expired"):
+                await db.rpc("yield_job", jid=jid, ticket=resumed["lease"])
+            reclaimed = await db.rpc("claim_job", jid=jid)
+            assert (
+                reclaimed["lease"] != resumed["lease"] and reclaimed["completed"] == 1
+            )
+
         finally:
             await db.call(
                 "DELETE", "/rest/v1/cases", admin=True, params={"id": "eq." + cid}

@@ -11,7 +11,7 @@ import {
   Upload,
   UserPlus,
 } from "lucide-react";
-import { api, apiBase, dateText, Dossier, message } from "@/lib/api";
+import { api, dateText, Dossier, message } from "@/lib/api";
 import { Busy, ErrorNote, Modal, Tag } from "./ui";
 import { Preview } from "./viewer";
 
@@ -361,25 +361,18 @@ function TaskCard({
   async function upload() {
     if (!file) return;
     await change(async () => {
-      const res = await fetch(
-        `${apiBase()}/v1/corrective-tasks/${task.id}/evidence?filename=${encodeURIComponent(file.name)}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + token,
-            "Content-Type": "application/pdf",
-          },
-          body: file,
-        },
+      const ticket = await api<{ upload_url: string; receipt: string }>(
+        `/v1/corrective-tasks/${task.id}/uploads`, token, "POST", { filename: file.name },
       );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "The evidence upload failed.",
-        );
-      }
+      const res = await fetch(ticket.upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/pdf" },
+        body: file,
+      });
+      if (!res.ok) throw new Error("The evidence upload failed. Please try again.");
+      await api(`/v1/corrective-tasks/${task.id}/uploads/finalize`, token, "POST", {
+        receipt: ticket.receipt,
+      });
     });
   }
   const event = (action: string) =>

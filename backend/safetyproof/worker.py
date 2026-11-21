@@ -4,7 +4,10 @@ import logging
 import os
 import sys
 from contextlib import suppress
+from pathlib import Path
+
 import httpx
+
 from .ai import InferenceFailure
 from .platform import PlatformError
 from .verify import run_verification
@@ -19,7 +22,13 @@ async def isolated_pdf(data, vid, tessdata):
         "safetyproof.pdf",
         vid,
         tessdata,
-        env={**os.environ, "OMP_THREAD_LIMIT": "1"},
+        env={
+            **os.environ,
+            "OMP_THREAD_LIMIT": "1",
+            "PYTHONPATH": os.pathsep.join(
+                dict.fromkeys([str(Path(__file__).resolve().parents[1]), *sys.path])
+            ),
+        },
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -31,6 +40,11 @@ async def isolated_pdf(data, vid, tessdata):
             proc.kill()
             await proc.wait()
     if proc.returncode:
+        log.warning(
+            "PDF parser exited %s: %s",
+            proc.returncode,
+            err.decode(errors="replace")[-1000:],
+        )
         msg = (
             err.decode(errors="replace")[-250:]
             if proc.returncode == 2

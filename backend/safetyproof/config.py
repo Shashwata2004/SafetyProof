@@ -1,8 +1,10 @@
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+ASSETS = Path(__file__).resolve().parents[1] / "assets"
 ROOT = Path(__file__).resolve().parents[2]
 PIPELINE = "evidence-review-1.2"
 PARSER = "pdf-lines-1.0"
@@ -19,10 +21,15 @@ class Settings(BaseSettings):
     llm_model: str = "gemini-3.5-flash-lite"
     embedding_model: str = "gemini-embedding-001"
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
-    tessdata_prefix: str = str(ROOT / ".local/tessdata")
+    tessdata_prefix: str = str(
+        ASSETS / "tessdata" if ASSETS.exists() else ROOT / ".local/tessdata"
+    )
     worker_enabled: bool = True
+    queue_enabled: bool = False
     min_request_interval: float = Field(default=1, ge=0)
-    sample_dir: Path = ROOT / "fixtures" / "demo"
+    sample_dir: Path = (
+        ASSETS / "documents" if ASSETS.exists() else ROOT / "fixtures" / "demo"
+    )
 
     def provenance(self):
         return {

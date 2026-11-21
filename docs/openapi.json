@@ -1294,6 +1294,112 @@
         }
       }
     },
+    "/v1/corrective-tasks/{tid}/uploads": {
+      "post": {
+        "summary": "Reserve Corrective Upload",
+        "operationId": "reserve_corrective_upload_v1_corrective_tasks__tid__uploads_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectiveUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/corrective-tasks/{tid}/uploads/finalize": {
+      "post": {
+        "summary": "Finalize Corrective Upload",
+        "operationId": "finalize_corrective_upload_v1_corrective_tasks__tid__uploads_finalize_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectiveFinalize"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/corrective-evidence/{eid}/source": {
       "get": {
         "summary": "Corrective Source",
@@ -1574,6 +1680,36 @@
           "deleting"
         ],
         "title": "CaseRecord"
+      },
+      "CorrectiveFinalize": {
+        "properties": {
+          "receipt": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Receipt"
+          }
+        },
+        "type": "object",
+        "required": [
+          "receipt"
+        ],
+        "title": "CorrectiveFinalize"
+      },
+      "CorrectiveUpload": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Filename"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename"
+        ],
+        "title": "CorrectiveUpload"
       },
       "EvidenceRef": {
         "properties": {

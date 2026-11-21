@@ -1,27 +1,29 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager, suppress
-from uuid import UUID, uuid4, uuid5
 from datetime import date
 from typing import Literal
+from uuid import UUID, uuid4, uuid5
+
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
+
 from .ai import Gemini
-from .config import settings, JOB_FIELDS
+from .config import JOB_FIELDS, settings
 from .models import (
+    CapReviewInput,
     CaseInput,
     CaseRecord,
-    CapReviewInput,
-    UploadInput,
-    RunInput,
-    ReviewInput,
-    UploadTicket,
-    RunTicket,
     PublishedResult,
+    ReviewInput,
+    RunInput,
+    RunTicket,
+    UploadInput,
+    UploadTicket,
 )
 from .platform import Platform, PlatformError
 from .worker import loop
@@ -38,7 +40,9 @@ async def lifespan(app):
         app.state.wake = asyncio.Event()
         task = (
             asyncio.create_task(loop(app.state.db, app.state.ai, cfg, app.state.wake))
-            if cfg.worker_enabled and cfg.supabase_service_role_key
+            if cfg.worker_enabled
+            and not cfg.queue_enabled
+            and cfg.supabase_service_role_key
             else None
         )
         try:
@@ -105,6 +109,19 @@ async def user(
 
 def db(request: Request):
     return request.app.state.db
+
+
+async def schedule_work(request: Request):
+    if cfg.queue_enabled:
+        from .queue import publish
+
+        pending = await request.app.state.db.rows(
+            "jobs", fields="id,available_at", filters={"state": "in.(queued,running)"}
+        )
+        for entry in pending:
+            await publish(entry["id"], entry["available_at"])
+    else:
+        request.app.state.wake.set()
 
 
 @app.get("/health")
@@ -298,7 +315,7 @@ async def reserve_upload(
 async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depends(db)):
     v = await d.one("document_versions", vid, token=u.token)
     jid = await d.rpc("ingest", cid=v["case_id"], actor_id=u.id, vid=str(vid))
-    request.app.state.wake.set()
+    await schedule_work(request)
     return {"job_id": jid}
 
 
@@ -329,7 +346,8 @@ async def add_samples(
     catalog = samples()
     if c["factory"] != catalog["factory"]:
         raise HTTPException(
-            409, "These sample documents belong to the factory listed in the document library."
+            409,
+            "These sample documents belong to the factory listed in the document library.",
         )
     for meta in catalog["documents"]:
         v = await d.rpc(
@@ -354,7 +372,7 @@ async def add_samples(
                 ):
                     raise
         await d.rpc("ingest", cid=str(cid), actor_id=u.id, vid=v["id"])
-    request.app.state.wake.set()
+    await schedule_work(request)
     return {"documents": len(catalog["documents"])}
 
 
@@ -375,20 +393,25 @@ async def new_run(
         request_id=str(body.request_key),
         configuration=cfg.provenance(),
     )
-    request.app.state.wake.set()
+    await schedule_work(request)
     return ticket
 
 
 @app.get("/v1/jobs/{jid}")
 async def job(jid: UUID, u: User = Depends(user), d=Depends(db)):
-    return await d.one("jobs", jid, fields=JOB_FIELDS, token=u.token)
+    record = await d.one("jobs", jid, fields=JOB_FIELDS, token=u.token)
+    if cfg.queue_enabled and record["state"] == "queued":
+        from .queue import publish
+
+        await publish(str(jid), record["available_at"])
+    return record
 
 
 @app.post("/v1/jobs/{jid}/retry", status_code=202)
 async def retry(jid: UUID, request: Request, u: User = Depends(user), d=Depends(db)):
     j = await d.one("jobs", jid, fields=JOB_FIELDS, token=u.token)
     await d.rpc("retry", cid=j["case_id"], actor_id=u.id, jid=str(jid))
-    request.app.state.wake.set()
+    await schedule_work(request)
     return {"job_id": str(jid)}
 
 
@@ -676,6 +699,85 @@ async def submit_task_evidence(
     return {"id": evidence_id}
 
 
+class CorrectiveUpload(BaseModel):
+    filename: str = Field(min_length=1, max_length=200)
+
+
+class CorrectiveFinalize(BaseModel):
+    receipt: str = Field(min_length=1, max_length=2000)
+
+
+@app.post("/v1/corrective-tasks/{tid}/uploads", status_code=201)
+async def reserve_corrective_upload(
+    tid: UUID, body: CorrectiveUpload, u: User = Depends(user), d=Depends(db)
+):
+    from .upload_tokens import issue
+
+    task = await d.one("corrective_tasks", tid, token=u.token)
+    if await corrective_role(d, u, task["case_id"]) != "manager":
+        raise HTTPException(403, "Factory Manager access required.")
+    if task["status"] not in {"assigned", "in_progress", "needs_revision"}:
+        raise HTTPException(409, "This task is not accepting evidence.")
+    try:
+        filename = UploadInput.pdf_name(body.filename.strip())
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    evidence_id = str(uuid4())
+    key = f"{task['case_id']}/corrective/{evidence_id}.pdf"
+    return {
+        "upload_url": await d.signed(key, upload=True),
+        "receipt": issue(
+            cfg.supabase_service_role_key,
+            {
+                "task": str(tid),
+                "actor": u.id,
+                "id": evidence_id,
+                "filename": filename,
+            },
+        ),
+    }
+
+
+@app.post("/v1/corrective-tasks/{tid}/uploads/finalize", status_code=201)
+async def finalize_corrective_upload(
+    tid: UUID, body: CorrectiveFinalize, u: User = Depends(user), d=Depends(db)
+):
+    from .pdf import MAX_BYTES
+    from .upload_tokens import verify
+
+    try:
+        receipt = verify(cfg.supabase_service_role_key, body.receipt)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if receipt["task"] != str(tid) or receipt["actor"] != u.id:
+        raise HTTPException(403, "This upload belongs to another task or account.")
+    task = await d.one("corrective_tasks", tid, token=u.token)
+    if await corrective_role(d, u, task["case_id"]) != "manager":
+        raise HTTPException(403, "Factory Manager access required.")
+    existing = await d.rows(
+        "corrective_evidence", token=u.token, filters={"id": "eq." + receipt["id"]}
+    )
+    if existing:
+        return {"id": receipt["id"]}
+    if task["status"] not in {"assigned", "in_progress", "needs_revision"}:
+        raise HTTPException(409, "This task is not accepting evidence.")
+    key = f"{task['case_id']}/corrective/{receipt['id']}.pdf"
+    data = await d.download(key)
+    if len(data) > MAX_BYTES or b"%PDF-" not in data[:1024]:
+        await d.remove([key])
+        raise HTTPException(422, "Choose a PDF under 10 MB.")
+    await d.rpc(
+        "corrective_event",
+        tid=str(tid),
+        actor_id=u.id,
+        event_name="submitted",
+        note="",
+        evidence_id=receipt["id"],
+        original_filename=receipt["filename"],
+    )
+    return {"id": receipt["id"]}
+
+
 @app.get("/v1/corrective-evidence/{eid}/source")
 async def corrective_source(eid: UUID, u: User = Depends(user), d=Depends(db)):
     evidence = await d.one("corrective_evidence", eid, token=u.token)
@@ -690,5 +792,5 @@ async def import_corrective_evidence(
     if await corrective_role(d, u, evidence["case_id"]) != "reviewer":
         raise HTTPException(403, "Review access required.")
     job_id = await d.rpc("corrective_import", eid=str(eid), actor_id=u.id)
-    request.app.state.wake.set()
+    await schedule_work(request)
     return {"job_id": job_id}

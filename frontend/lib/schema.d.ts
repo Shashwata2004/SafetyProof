@@ -453,6 +453,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/corrective-tasks/{tid}/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reserve Corrective Upload */
+        post: operations["reserve_corrective_upload_v1_corrective_tasks__tid__uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/corrective-tasks/{tid}/uploads/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize Corrective Upload */
+        post: operations["finalize_corrective_upload_v1_corrective_tasks__tid__uploads_finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/corrective-evidence/{eid}/source": {
         parameters: {
             query?: never;
@@ -560,6 +594,16 @@ export interface components {
             archived: boolean;
             /** Deleting */
             deleting: boolean;
+        };
+        /** CorrectiveFinalize */
+        CorrectiveFinalize: {
+            /** Receipt */
+            receipt: string;
+        };
+        /** CorrectiveUpload */
+        CorrectiveUpload: {
+            /** Filename */
+            filename: string;
         };
         /** EvidenceRef */
         EvidenceRef: {
@@ -1691,6 +1735,76 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reserve_corrective_upload_v1_corrective_tasks__tid__uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectiveUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finalize_corrective_upload_v1_corrective_tasks__tid__uploads_finalize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectiveFinalize"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {

@@ -2,6 +2,8 @@
 
 SafetyProof AI cross-checks garment factory inspection reports against supporting records. The reviewer can compare English and Bangla evidence, open the exact PDF page behind a result, and keep a record of their decision.
 
+Live app: https://safetyproof.vercel.app · API: https://safetyproof-api.vercel.app/docs
+
 ## Local setup
 
 Requires Docker, Python 3.12, Node 22 and npm. Run from the repository root.
@@ -58,7 +60,7 @@ The integration test uses real local Supabase and a scripted inference boundary.
 
 ## Deployment and disclosure
 
-Use the Docker service in `render.yaml` on Render and import the same repository into Vercel with `frontend` as the root. Details and the live demo sequence are in the [delivery guide](docs/planning/delivery.md). Record the public repo, live link, demo video and team member names before submitting. Share test credentials in the organizer's submission form.
+Deploy two Vercel projects from this repository: `frontend` (Next.js) and `backend` (FastAPI). The backend uses Vercel Queues for document processing and bounded, resumable verification jobs. Supabase provides Auth, Postgres and private PDF storage. Configuration and the live demonstration sequence are in the [delivery guide](docs/planning/delivery.md). The Docker service in `render.yaml` remains an optional alternative; run only one worker deployment against a database. Record the public repo, live link, demo video and team member names before submitting. Share test credentials in the organizer's submission form.
 
 - Stack and libraries include [Next.js](https://nextjs.org), React, Tailwind CSS, TanStack Query, Lucide, PDF.js, [FastAPI](https://fastapi.tiangolo.com), [Supabase](https://supabase.com), pgvector, pdfplumber, pypdfium2 and [Tesseract](https://github.com/tesseract-ocr/tesseract). The lock files list exact dependencies.
 - AI inference uses Gemini API with `gemini-3.5-flash-lite` and `gemini-embedding-001` by default. Google’s SDK provides access. The application uses no model training.
