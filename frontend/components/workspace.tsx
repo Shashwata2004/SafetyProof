@@ -21,7 +21,6 @@ import {
   LayoutDashboard,
   LibraryBig,
   Link2,
-  LogIn,
   LogOut,
   Menu,
   Plus,
@@ -45,6 +44,8 @@ import { Analysis } from "./analysis";
 import { CaseOverview } from "./case-overview";
 import { RunHistory } from "./run-history";
 import { CapReview } from "./cap-review";
+import { AdminWorkspace } from "./admin-workspace";
+import type { Factory } from "./onboarding";
 import { CorrectiveWork } from "./corrective-work";
 import { sampleCatalog } from "@/lib/samples";
 
@@ -73,9 +74,7 @@ function App() {
     [session, setSession] = useState<Session | null>(null);
   const [restoring, setRestoring] = useState(true),
     [mobile, setMobile] = useState(false);
-  const [dialog, setDialog] = useState<"login" | "case" | "account" | null>(
-      null,
-    ),
+  const [dialog, setDialog] = useState<"case" | "account" | null>(null),
     [preview, setPreview] = useState<Preview | null>(null);
   const [err, setErr] = useState(""),
     [working, setWorking] = useState(false);
@@ -96,18 +95,50 @@ function App() {
     return () => data.subscription.unsubscribe();
   }, [config.data, config.isLoading]);
   const token = session?.access_token;
-  const isManager =
-    session?.user.app_metadata.workspace_role === "factory_manager";
-  const view = isManager && cid ? "corrective" : requestedView;
+  const identity = useQuery({
+    queryKey: ["identity", token],
+    queryFn: () =>
+      api<{ role: string; factory_id: string | null }>("/v1/me", token),
+    enabled: !!token,
+    retry: false,
+    refetchOnWindowFocus: true,
+  });
+  const role = identity.data?.role;
+  const isManager = role === "factory_manager";
+  const assigned = useQuery({
+    queryKey: ["assigned-factories", session?.user.id],
+    queryFn: () =>
+      api<{ factories: Factory }[]>("/v1/reviewer/factories", token),
+    enabled: role === "reviewer",
+  });
+  const managerWork = useQuery({
+    queryKey: ["manager-work", session?.user.id],
+    queryFn: () =>
+      api<{
+        factory: Factory;
+        tasks: {
+          id: string;
+          case_id: string;
+          title: string;
+          due_on: string;
+          status: string;
+        }[];
+      }>("/v1/manager/work", token),
+    enabled: isManager && !cid,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+  });
+  const view = isManager ? (cid ? "corrective" : "cases") : requestedView;
   const cases = useQuery({
     queryKey: ["cases", session?.user.id],
     queryFn: () => api<Case[]>("/v1/cases", token),
-    enabled: !!token,
+    enabled: !!role && role !== "admin",
   });
   const dossier = useQuery({
     queryKey: ["case", session?.user.id, cid],
     queryFn: () => api<Dossier>("/v1/cases/" + cid, token),
-    enabled: !!token && !!cid,
+    enabled: !!role && role !== "admin" && !!cid,
+    refetchOnWindowFocus: true,
     refetchInterval: (q) =>
       q.state.data?.jobs.some((j) => ["queued", "running"].includes(j.state))
         ? 1700
@@ -160,6 +191,50 @@ function App() {
         : isManager
           ? "Factory cases"
           : "Review cases";
+  if (restoring || (token && identity.isPending))
+    return (
+      <main className="boot">
+        <Busy />
+      </main>
+    );
+  if (!session || identity.isError) {
+    return (
+      <main className="entry-page">
+        <section className="panel entry-panel">
+          <h1>Sign in to SafetyProof AI</h1>
+          {params.get("password") === "updated" && (
+            <p>Your password is set. Sign in to continue.</p>
+          )}
+          <Login
+            auth={auth}
+            restoring={restoring}
+            error={
+              identity.error
+                ? message(identity.error)
+                : config.error
+                  ? message(config.error)
+                  : undefined
+            }
+          />
+          <a href="/signup/factory-manager">Apply as a Factory Manager</a>
+        </section>
+      </main>
+    );
+  }
+  if (role === "admin" && token) {
+    const view =
+      requestedView === "reviewers" || requestedView === "manager-applications"
+        ? requestedView
+        : "factories";
+    return (
+      <AdminWorkspace
+        token={token}
+        view={view}
+        signout={() => void signout()}
+        changeView={(v) => go(v)}
+      />
+    );
+  }
   const nav = (label: string, v: string, Icon: typeof Files, id = "") => (
     <button
       className={"nav-link " + (view === v ? "active" : "")}
@@ -214,26 +289,13 @@ function App() {
         )}
         <div className="side-bottom">
           <div className="side-rule" />
-          <button
-            className="user-tile"
-            onClick={() => setDialog(session ? "account" : "login")}
-          >
+          <button className="user-tile" onClick={() => setDialog("account")}>
             <span className="avatar">
-              {session ? (
-                (session.user.email || "R")[0].toUpperCase()
-              ) : (
-                <ShieldCheck size={19} />
-              )}
+              {(session.user.email || "R")[0].toUpperCase()}
             </span>
             <span>
-              <b>
-                {session
-                  ? session.user.email?.split("@")[0]
-                  : "Guest workspace"}
-              </b>
-              <small>
-                {session ? "Account settings" : "Sign in for case access"}
-              </small>
+              <b>{session.user.email?.split("@")[0]}</b>
+              <small>Account settings</small>
             </span>
             <ChevronRight size={16} />
           </button>
@@ -254,21 +316,9 @@ function App() {
             <ChevronRight size={13} />
             <strong>{title}</strong>
           </div>
-          <button
-            className="top-account"
-            onClick={() => setDialog(session ? "account" : "login")}
-          >
-            {session ? (
-              <>
-                <span className="online" />
-                {session.user.email?.split("@")[0]}
-              </>
-            ) : (
-              <>
-                <LogIn size={15} />
-                Sign in
-              </>
-            )}
+          <button className="top-account" onClick={() => setDialog("account")}>
+            <span className="online" />
+            {session.user.email?.split("@")[0]}
           </button>
         </header>
         <main className="content">
@@ -418,16 +468,49 @@ function App() {
                       : "Cross-check factory safety reports against their own evidence."}
                   </p>
                 </div>
-                {!isManager && (
-                  <button
-                    className="primary"
-                    onClick={() => setDialog(session ? "case" : "login")}
-                  >
+                {role === "reviewer" && (
+                  <button className="primary" onClick={() => setDialog("case")}>
                     <Plus size={17} />
                     New case
                   </button>
                 )}
               </div>
+              {isManager && (
+                <section className="panel">
+                  <div className="section-head">
+                    <div>
+                      <h2>Corrective tasks</h2>
+                      <p>
+                        {managerWork.data?.factory.name ||
+                          "Your assigned factory"}
+                      </p>
+                    </div>
+                  </div>
+                  {managerWork.isLoading && <Busy />}
+                  {managerWork.error && (
+                    <ErrorNote text={message(managerWork.error)} />
+                  )}
+                  {managerWork.data?.tasks.length === 0 && (
+                    <p className="empty-text">
+                      No corrective tasks assigned yet.
+                    </p>
+                  )}
+                  {managerWork.data?.tasks.map((task) => (
+                    <button
+                      className="file-row"
+                      key={task.id}
+                      onClick={() => go("corrective", task.case_id)}
+                    >
+                      <span className="row-main">
+                        <b>{task.title}</b>
+                        <small>Due {dateText(task.due_on)}</small>
+                      </span>
+                      <Tag>{task.status.replaceAll("_", " ")}</Tag>
+                      <ChevronRight size={15} />
+                    </button>
+                  ))}
+                </section>
+              )}
               {session && (
                 <section className="panel cases-panel">
                   <div className="section-head">
@@ -469,69 +552,72 @@ function App() {
                   )}
                 </section>
               )}
-              {!isManager && (
-                <>
-                  <section className="feature">
-                    <div className="feature-copy">
-                      <span className="feature-label">
-                        <span /> Sample case
-                      </span>
-                      <h2>April safety review</h2>
-                      <p>
-                        Read an inspection report alongside a Bangla incident
-                        register, a fire procedure, and an earlier finding.
-                      </p>
-                      <button
-                        className="feature-cta"
-                        disabled={working}
-                        onClick={() =>
-                          session
-                            ? void create(
-                                {
-                                  factory: sample.factory,
-                                  title: sample.title,
-                                  programme: sample.programme,
-                                  period_start: sample.period_start,
-                                  period_end: sample.period_end,
-                                },
-                                true,
-                              )
-                            : go("library")
-                        }
-                      >
-                        {working
-                          ? "Preparing case…"
-                          : session
-                            ? "Load sample case"
-                            : "Explore sample documents"}{" "}
-                        <ArrowRight size={16} />
-                      </button>
-                    </div>
-                    <div className="paper-art" aria-hidden="true">
-                      <div className="art-sheet rear">
-                        <div className="art-line" />
-                        <small>INSPECTION REPORT</small>
-                        <strong>April review</strong>
-                        <i />
-                        <i />
-                        <i />
-                      </div>
-                      <div className="art-sheet front">
-                        <div className="art-fold" />
-                        <ScanLine size={22} />
-                        <small>INCIDENT REGISTER</small>
-                        <strong lang="bn">ঘটনার বিবরণ</strong>
-                        <span lang="bn">
-                          ১৫ এপ্রিল কাটিং মেশিনে একজন শ্রমিক আহত হন।
+              {role === "reviewer" &&
+                assigned.data?.some(
+                  ({ factories }) => factories.name === sample.factory,
+                ) && (
+                  <>
+                    <section className="feature">
+                      <div className="feature-copy">
+                        <span className="feature-label">
+                          <span /> Sample case
                         </span>
-                        <i />
-                        <i />
+                        <h2>April safety review</h2>
+                        <p>
+                          Read an inspection report alongside a Bangla incident
+                          register, a fire procedure, and an earlier finding.
+                        </p>
+                        <button
+                          className="feature-cta"
+                          disabled={working}
+                          onClick={() =>
+                            session
+                              ? void create(
+                                  {
+                                    factory: sample.factory,
+                                    title: sample.title,
+                                    programme: sample.programme,
+                                    period_start: sample.period_start,
+                                    period_end: sample.period_end,
+                                  },
+                                  true,
+                                )
+                              : go("library")
+                          }
+                        >
+                          {working
+                            ? "Preparing case…"
+                            : session
+                              ? "Load sample case"
+                              : "Explore sample documents"}{" "}
+                          <ArrowRight size={16} />
+                        </button>
                       </div>
-                    </div>
-                  </section>
-                  <SampleFiles sample={sample} preview={setPreview} compact />
-                </>
-              )}
+                      <div className="paper-art" aria-hidden="true">
+                        <div className="art-sheet rear">
+                          <div className="art-line" />
+                          <small>INSPECTION REPORT</small>
+                          <strong>April review</strong>
+                          <i />
+                          <i />
+                          <i />
+                        </div>
+                        <div className="art-sheet front">
+                          <div className="art-fold" />
+                          <ScanLine size={22} />
+                          <small>INCIDENT REGISTER</small>
+                          <strong lang="bn">ঘটনার বিবরণ</strong>
+                          <span lang="bn">
+                            ১৫ এপ্রিল কাটিং মেশিনে একজন শ্রমিক আহত হন।
+                          </span>
+                          <i />
+                          <i />
+                        </div>
+                      </div>
+                    </section>
+                    <SampleFiles sample={sample} preview={setPreview} compact />
+                  </>
+                )}
             </>
           )}
         </main>
@@ -546,18 +632,11 @@ function App() {
       {preview && (
         <Viewer item={preview} token={token} close={() => setPreview(null)} />
       )}
-      {dialog === "login" && (
-        <Login
-          auth={auth}
-          restoring={restoring}
-          error={config.error ? message(config.error) : undefined}
-          close={() => setDialog(null)}
-        />
-      )}
       {dialog === "case" && (
         <NewCase
           close={() => setDialog(null)}
           create={create}
+          factories={assigned.data?.map((row) => row.factories) || []}
           busy={working}
           error={err}
         />
@@ -635,84 +714,71 @@ function Login({
   auth,
   restoring,
   error,
-  close,
 }: {
   auth: SupabaseClient | null;
   restoring: boolean;
   error?: string;
-  close: () => void;
 }) {
-  const [busy, setBusy] = useState(false),
-    [err, setErr] = useState("");
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!auth) return;
+    const form = new FormData(event.currentTarget);
     setBusy(true);
     setErr("");
     try {
-      const f = new FormData(e.currentTarget);
-      if (!auth) throw new Error("Workspace authentication is unavailable.");
-      const { error } = await auth.auth.signInWithPassword({
-        email: String(f.get("email")).trim(),
-        password: String(f.get("password")),
+      const session = await api<{
+        access_token: string;
+        refresh_token: string;
+      }>("/v1/login", undefined, "POST", {
+        email: String(form.get("email")).trim(),
+        password: String(form.get("password")),
       });
+      const { error } = await auth.auth.setSession(session);
       if (error) throw error;
-      close();
-    } catch (e) {
-      setErr(message(e));
+    } catch (error) {
+      setErr(message(error));
     } finally {
       setBusy(false);
     }
   }
   return (
-    <Modal title="Sign in to your workspace" close={close}>
-      <form onSubmit={submit}>
-        <p className="form-intro">
-          Use the reviewer or viewer account issued for this workspace.
-        </p>
-        <label>
-          Email
-          <input
-            name="email"
-            type="email"
-            required
-            autoComplete="username"
-            autoFocus
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            name="password"
-            required
-            autoComplete="current-password"
-          />
-        </label>
-        {(err || error || (!auth && !restoring)) && (
-          <ErrorNote
-            text={err || error || "Workspace authentication is unavailable."}
-          />
-        )}
-        <div className="form-actions">
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
-          <button className="primary" disabled={busy || !auth}>
-            Sign in <ArrowRight size={15} />
-          </button>
-        </div>
-      </form>
-    </Modal>
+    <form onSubmit={submit}>
+      <label>
+        Email
+        <input name="email" type="email" required autoComplete="username" />
+      </label>
+      <label>
+        Password
+        <input
+          name="password"
+          type="password"
+          required
+          autoComplete="current-password"
+        />
+      </label>
+      {(err || error || (!auth && !restoring)) && (
+        <ErrorNote
+          text={err || error || "Workspace authentication is unavailable."}
+        />
+      )}
+      <button className="primary" disabled={busy || !auth}>
+        Sign in <ArrowRight size={15} />
+      </button>
+    </form>
   );
 }
 
 function NewCase({
+  factories,
   close,
   create,
   busy,
   error,
 }: {
   close: () => void;
+  factories: Factory[];
   create: (b: Record<string, unknown>) => Promise<void>;
   busy: boolean;
   error: string;
@@ -731,14 +797,19 @@ function NewCase({
         }}
       >
         <label>
-          Factory name
-          <input
-            name="factory"
-            autoFocus
-            maxLength={160}
-            required
-            placeholder="Factory named in the documents"
-          />
+          Factory
+          <select name="factory" required autoFocus>
+            <option value="">
+              {factories.length
+                ? "Choose an assigned factory"
+                : "No assigned factories"}
+            </option>
+            {factories.map((factory) => (
+              <option value={factory.name} key={factory.id}>
+                {factory.name}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           Case title
@@ -768,7 +839,7 @@ function NewCase({
           <button type="button" onClick={close}>
             Cancel
           </button>
-          <button className="primary" disabled={busy}>
+          <button className="primary" disabled={busy || !factories.length}>
             {busy ? "Creating…" : "Create case"}
           </button>
         </div>

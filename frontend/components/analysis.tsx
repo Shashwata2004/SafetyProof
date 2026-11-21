@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -56,6 +56,12 @@ const decisions: Record<Action, string> = {
   comment: "Add comment",
 };
 
+function revealAssessment(id: string) {
+  const detail = document.getElementById(`assessment-detail-${id}`);
+  detail?.focus({ preventScroll: true });
+  detail?.scrollIntoView({ block: "start" });
+}
+
 function citation(ref: Ref, heading: string, preview: (item: Preview) => void) {
   return (
     <article className="source-card">
@@ -104,6 +110,10 @@ export function Analysis({
     d.role === "reviewer" && !d.case.archived && !d.case.deleting;
   const rows = results.data || [];
   const selected = rows.find((r) => r.id === itemId);
+  const selectedId = selected?.id;
+  useEffect(() => {
+    if (selectedId) revealAssessment(selectedId);
+  }, [selectedId]);
   const displayed = rows.filter(
     (r) =>
       (filter === "all" || r.outcome === filter) &&
@@ -263,7 +273,14 @@ export function Analysis({
                     "file-row assessment " +
                     (selected?.id === r.id ? "chosen" : "")
                   }
-                  onClick={() => go(run.id, r.id)}
+                  aria-controls={`assessment-detail-${r.id}`}
+                  onClick={() => {
+                    if (selected?.id === r.id) {
+                      revealAssessment(r.id);
+                    } else {
+                      go(run.id, r.id);
+                    }
+                  }}
                 >
                   <span className="doc-icon inspection">
                     <ScanLine size={19} />
@@ -289,16 +306,16 @@ export function Analysis({
           </>
         )}
       </section>
-      {selected && (
+      {displayed.map((row) => (
         <Detail
-          key={selected.id}
-          r={selected}
+          key={row.id}
+          r={row}
           token={token}
           writable={writable}
           preview={preview}
           saved={() => void results.refetch()}
         />
-      )}
+      ))}
       {printData && <PrintSheet dossier={d} report={printData} />}
     </>
   );
@@ -336,7 +353,13 @@ function Detail({
     }
   }
   return (
-    <section className="panel">
+    <section
+      className="panel"
+      id={`assessment-detail-${r.id}`}
+      aria-label={`Source comparison: ${r.claim.source.quote}`}
+      tabIndex={-1}
+      style={{ scrollMarginTop: "1.5rem" }}
+    >
       <div className="section-head">
         <div>
           <h2>Source comparison</h2>

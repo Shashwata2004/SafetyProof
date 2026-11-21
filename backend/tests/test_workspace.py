@@ -289,7 +289,6 @@ async def test_case_review_and_permissions(monkeypatch):
             await call("POST", review_path, body=decision, status=201)
             assert await call("GET", path + "/followups") == []
             factory_user = "factory_manager"
-            await call("GET", path, role=factory_user, status=404)
             await call(
                 "POST",
                 "/cases",
@@ -316,10 +315,20 @@ async def test_case_review_and_permissions(monkeypatch):
                 status=404,
             )
             await call("GET", path + "/corrective-work", role="viewer", status=404)
-            task = await call(
+            await call(
                 "POST",
                 path + "/corrective-work",
                 role=factory_user,
+                status=403,
+                body={
+                    "title": "No permission",
+                    "assignee": "Team",
+                    "due_on": "2026-11-28",
+                },
+            )
+            task = await call(
+                "POST",
+                path + "/corrective-work",
                 status=201,
                 body={
                     "title": "Demonstrate aisle clearance",
@@ -329,6 +338,15 @@ async def test_case_review_and_permissions(monkeypatch):
                 },
             )
             task_path = "/corrective-tasks/" + task["id"]
+            await call(
+                "POST",
+                task_path + "/events",
+                role=factory_user,
+                body={"action": "comment", "note": "Maintenance scheduled the work."},
+            )
+            board = await call("GET", path + "/corrective-work", role=factory_user)
+            assert board["tasks"][0]["status"] == "assigned"
+            assert board["events"][-1]["action"] == "comment"
             await call(
                 "POST",
                 task_path + "/events",

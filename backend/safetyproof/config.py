@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     supabase_url: str = "http://127.0.0.1:54321"
     supabase_anon_key: str = Field(default="", repr=False)
     supabase_service_role_key: str = Field(default="", repr=False)
+    app_url: str = "http://localhost:3000"
+    admin_email: str = ""
+    admin_password: str = Field(default="", repr=False)
     gemini_api_key: str = Field(default="", repr=False)
     llm_model: str = "gemini-3.5-flash-lite"
     embedding_model: str = "gemini-embedding-001"

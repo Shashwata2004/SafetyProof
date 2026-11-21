@@ -202,6 +202,21 @@ def demo():
     )
 
 
+def closure_example():
+    render(
+        ROOT / "fixtures/live/april-exit-follow-up.pdf",
+        "April exit follow-up inspection",
+        [
+            "External follow-up inspection: 28 April 2026. Reference FU-FI16-APR28.",
+            "Original finding FI-16: cartons obstructed Exit E-02 on 6 March 2026, Building A, ground floor.",
+            "On 28 April 2026, the follow-up inspector observed that all cartons had been removed from Exit E-02. Exit E-02 and its access aisle were clear and unobstructed.",
+            "Outcome: the obstruction recorded in finding FI-16 was verified as resolved on 28 April 2026.",
+            "The actual work completion date was not established. This observation does not prove completion by the CAP deadline of 20 March 2026.",
+            "Scope: exit obstruction only. Aisle floor markings and directional signage were not verified in this follow-up.",
+        ],
+    )
+
+
 def evaluation():
     labels = json.loads((ROOT / "evaluation/labels.json").read_text())
     for case in labels:
@@ -221,8 +236,11 @@ def evaluation():
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--evaluation", action="store_true")
+    p.add_argument("--closure-example", action="store_true")
     args = p.parse_args()
     if args.evaluation:
         evaluation()
+    elif args.closure_example:
+        closure_example()
     else:
         demo()

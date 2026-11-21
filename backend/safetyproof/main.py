@@ -7,11 +7,13 @@ from uuid import UUID, uuid4, uuid5
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
+from .accounts import account_router
 from .ai import Gemini
 from .config import JOB_FIELDS, settings
 from .models import (
@@ -61,14 +63,16 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[s.strip() for s in cfg.cors_origins.split(",")],
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Upload-Receipt"],
 )
 
 
 @app.middleware("http")
 async def protect_authenticated_responses(request: Request, call_next):
     response = await call_next(request)
-    if request.headers.get("authorization"):
+    if request.headers.get("authorization") or request.url.path.startswith(
+        ("/v1/login", "/v1/invites", "/v1/signup")
+    ):
         response.headers["Cache-Control"] = "private, no-store"
     return response
 
@@ -81,10 +85,29 @@ async def platform_error(_, error):
     )
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_error(_, error):
+    # Validation errors must not reflect passwords, token values or uploaded data.
+    return JSONResponse(
+        {
+            "detail": [
+                {"loc": item["loc"], "msg": item["msg"], "type": item["type"]}
+                for item in error.errors()
+            ]
+        },
+        status_code=422,
+    )
+
+
 class User(BaseModel):
     id: str
     token: str
-    factory_manager: bool = False
+    role: str
+    factory_id: UUID | None = None
+
+    @property
+    def factory_manager(self):
+        return self.role == "factory_manager"
 
 
 async def user(
@@ -99,16 +122,35 @@ async def user(
         if e.status in (400, 401, 403):
             raise HTTPException(401, "Your sign-in has expired.") from e
         raise
+    profile = await db.rows(
+        "account_profiles",
+        fields="role,status,factory_id",
+        filters={"id": "eq." + identity["id"]},
+    )
+    if not profile or profile[0]["status"] != "active":
+        raise HTTPException(401, "Your session is no longer active.")
+    role = profile[0]["role"]
+    path = request.url.path
+    if role == "admin" and path != "/v1/me" and not path.startswith("/v1/admin/"):
+        raise HTTPException(
+            403, "Administrator accounts use the read-only factory overview."
+        )
+    if role in ("viewer", "factory_manager") and request.method != "GET":
+        if role != "factory_manager" or not path.startswith(("/v1/corrective-tasks/",)):
+            raise HTTPException(403, "Review access required.")
     return User(
         id=identity["id"],
         token=auth.credentials,
-        factory_manager=identity.get("app_metadata", {}).get("workspace_role")
-        == "factory_manager",
+        role=role,
+        factory_id=profile[0]["factory_id"],
     )
 
 
 def db(request: Request):
     return request.app.state.db
+
+
+app.include_router(account_router(user, db))
 
 
 async def schedule_work(request: Request):
@@ -150,12 +192,12 @@ def samples():
 
 
 @app.get("/v1/samples")
-def sample_list():
+def sample_list(u: User = Depends(user)):
     return samples()
 
 
 @app.get("/v1/samples/{filename}")
-def sample_pdf(filename: str):
+def sample_pdf(filename: str, u: User = Depends(user)):
     if filename not in {d["filename"] for d in samples()["documents"]}:
         raise HTTPException(404, "Unknown sample.")
     return FileResponse(
@@ -173,8 +215,15 @@ async def list_cases(u: User = Depends(user), d=Depends(db)):
 
 @app.post("/v1/cases", response_model=CaseRecord, status_code=201)
 async def create_case(body: CaseInput, u: User = Depends(user), d=Depends(db)):
-    if u.factory_manager:
-        raise HTTPException(403, "A reviewer creates and shares the case.")
+    if u.role != "reviewer":
+        raise HTTPException(403, "Review access required.")
+    assigned = await d.rows(
+        "reviewer_factories",
+        fields="factory_id,factories!inner(name)",
+        filters={"reviewer_id": "eq." + u.id, "factories.name": "eq." + body.factory},
+    )
+    if not assigned:
+        raise HTTPException(403, "Choose a factory assigned to your reviewer account.")
     return await d.rpc("create_case", actor_id=u.id, data=body.model_dump(mode="json"))
 
 
@@ -567,7 +616,7 @@ class TaskInput(BaseModel):
 
 class TaskDecision(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
-    action: Literal["started", "return", "accept"]
+    action: Literal["started", "return", "accept", "comment"]
     note: str = Field(default="", max_length=3000)
 
 
@@ -619,7 +668,8 @@ async def corrective_work(cid: UUID, u: User = Depends(user), d=Depends(db)):
 async def create_task(
     cid: UUID, body: TaskInput, u: User = Depends(user), d=Depends(db)
 ):
-    await corrective_role(d, u, cid)
+    if await corrective_role(d, u, cid) != "reviewer":
+        raise HTTPException(403, "Only reviewers assign corrective tasks.")
     tid = await d.rpc(
         "corrective_task",
         cid=str(cid),
@@ -634,9 +684,11 @@ async def task_event(
     tid: UUID, body: TaskDecision, u: User = Depends(user), d=Depends(db)
 ):
     task = await d.one("corrective_tasks", tid, token=u.token)
-    expected_role = "manager" if body.action == "started" else "reviewer"
+    expected_role = "manager" if body.action in ("started", "comment") else "reviewer"
     if await corrective_role(d, u, task["case_id"]) != expected_role:
         raise HTTPException(403, "This action requires the other workspace role.")
+    if body.action == "comment" and not body.note:
+        raise HTTPException(422, "Enter a comment.")
     if body.action == "return" and not body.note:
         raise HTTPException(422, "Explain what needs to be revised.")
     await d.rpc(

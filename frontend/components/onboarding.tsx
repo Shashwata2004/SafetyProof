@@ -1,0 +1,310 @@
+"use client";
+
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { api, apiBase, message } from "@/lib/api";
+import { ErrorNote } from "./ui";
+
+export type Factory = { id: string; name: string; address?: string };
+
+function PasswordFields() {
+  return (
+    <>
+      <label>
+        Password
+        <input
+          name="password"
+          type="password"
+          minLength={8}
+          maxLength={72}
+          required
+          autoComplete="new-password"
+        />
+      </label>
+      <p className="hint">
+        Use at least 8 characters. A longer, unique passphrase is stronger.
+      </p>
+      <label>
+        Confirm password
+        <input
+          name="confirm"
+          type="password"
+          minLength={8}
+          maxLength={72}
+          required
+          autoComplete="new-password"
+        />
+      </label>
+    </>
+  );
+}
+
+function passwords(form: FormData) {
+  const password = String(form.get("password"));
+  if (password !== form.get("confirm"))
+    throw new Error("Passwords do not match.");
+  if (new TextEncoder().encode(password).length > 72)
+    throw new Error("Use at most 72 UTF-8 bytes for the password.");
+  return password;
+}
+
+export function SetPassword() {
+  const started = useRef(false);
+  const [token, setToken] = useState("");
+  const [status, setStatus] = useState("checking");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    const url = new URL(window.location.href);
+    const value =
+      new URLSearchParams(url.hash.slice(1)).get("token") ||
+      url.searchParams.get("token");
+    window.history.replaceState(null, "", "/set-password");
+    if (!value) {
+      setStatus("invalid");
+      setError("This invite is missing. Ask the admin for a new link.");
+      return;
+    }
+    setToken(value);
+    void api("/v1/invites/validate", undefined, "POST", { token: value })
+      .then(() => setStatus("ready"))
+      .catch((error) => {
+        setStatus("invalid");
+        setError(message(error));
+      });
+  }, []);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setStatus("saving");
+    try {
+      const password = passwords(new FormData(event.currentTarget));
+      await api("/v1/invites/set-password", undefined, "POST", {
+        token,
+        password,
+      });
+      window.location.replace("/?password=updated");
+    } catch (error) {
+      setError(message(error));
+      setStatus("ready");
+    }
+  }
+  return (
+    <main className="entry-page">
+      <section className="panel entry-panel">
+        <h1>Set your reviewer password</h1>
+        {status === "checking" && <p>Checking your invitation…</p>}
+        {["ready", "saving"].includes(status) && (
+          <form onSubmit={submit}>
+            <PasswordFields />
+            <button className="primary" disabled={status === "saving"}>
+              Set password
+            </button>
+          </form>
+        )}
+        {error && <ErrorNote text={error} />}
+        <a href="/">Back to sign in</a>
+      </section>
+    </main>
+  );
+}
+
+export function ManagerSignup() {
+  const [factories, setFactories] = useState<Factory[] | null>(null);
+  const [factoryId, setFactoryId] = useState("");
+  const [address, setAddress] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    void api<Factory[]>("/v1/factories")
+      .then(setFactories)
+      .catch((error) => setError(message(error)));
+  }, []);
+  useEffect(() => {
+    setAddress("");
+    if (!factoryId) return;
+    let active = true;
+    void api<{ address: string }>(`/v1/factories/${factoryId}/address`)
+      .then((result) => {
+        if (active) setAddress(result.address);
+      })
+      .catch((error) => {
+        if (active) setError(message(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [factoryId]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const form = new FormData(event.currentTarget);
+      const password = passwords(form);
+      const file = form.get("office_card");
+      if (
+        !(file instanceof File) ||
+        file.size < 1 ||
+        file.size > 5 * 1024 * 1024
+      )
+        throw new Error("Choose an office ID card up to 5 MB.");
+      if (!["image/jpeg", "image/png", "application/pdf"].includes(file.type))
+        throw new Error("Choose a JPG, PNG or PDF.");
+      if (form.get("website")) throw new Error("Check the application fields.");
+      const ticket = await api<{
+        upload_url: string;
+        upload_key: string;
+        receipt: string;
+      }>("/v1/signup/factory-manager/upload", undefined, "POST");
+      const upload = await fetch(ticket.upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!upload.ok)
+        throw new Error("The office ID upload failed. Try again.");
+      const body = Object.fromEntries(form);
+      delete body.office_card;
+      delete body.confirm;
+      const response = await fetch(apiBase() + "/v1/signup/factory-manager", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Upload-Receipt": ticket.receipt,
+        },
+        body: JSON.stringify({
+          ...body,
+          password,
+          factory_id: factoryId,
+          consent: form.get("consent") === "on",
+          upload_key: ticket.upload_key,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Check the application fields and try again.",
+        );
+      }
+      window.location.assign("/signup/factory-manager/waiting");
+    } catch (error) {
+      setError(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="entry-page">
+      <section className="panel entry-panel">
+        <h1>Apply as a Factory Manager</h1>
+        <p>Choose your factory and submit your office ID for admin approval.</p>
+        {factories?.length === 0 && (
+          <p>No factories available yet. Please contact the admin.</p>
+        )}
+        <form onSubmit={submit}>
+          <label>
+            Full name
+            <input
+              name="full_name"
+              required
+              maxLength={160}
+              autoComplete="name"
+            />
+          </label>
+          <label>
+            Email
+            <input
+              name="email"
+              type="email"
+              required
+              maxLength={254}
+              autoComplete="email"
+            />
+          </label>
+          <label>
+            Phone number
+            <input
+              name="phone"
+              type="tel"
+              required
+              minLength={6}
+              maxLength={32}
+              autoComplete="tel"
+            />
+          </label>
+          <label>
+            Factory
+            <select
+              required
+              value={factoryId}
+              onChange={(event) => setFactoryId(event.target.value)}
+            >
+              <option value="">
+                {factories ? "Choose factory" : "Loading factories…"}
+              </option>
+              {factories?.map((factory) => (
+                <option value={factory.id} key={factory.id}>
+                  {factory.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {address && <p className="hint">{address}</p>}
+          <label>
+            Job title
+            <input
+              name="job_title"
+              defaultValue="Factory Manager"
+              required
+              maxLength={120}
+            />
+          </label>
+          <label>
+            Office ID card
+            <input
+              name="office_card"
+              type="file"
+              accept="image/jpeg,image/png,application/pdf"
+              required
+            />
+          </label>
+          <p className="hint">JPG, PNG or PDF, up to 5 MB.</p>
+          <label>
+            Office ID card number (optional)
+            <input name="id_card_number" maxLength={120} />
+          </label>
+          <label>
+            Factory license or BGMEA/BKMEA membership number (optional)
+            <input name="membership_number" maxLength={120} />
+          </label>
+          <PasswordFields />
+          <div hidden aria-hidden="true">
+            <label>
+              Website
+              <input name="website" tabIndex={-1} autoComplete="off" />
+            </label>
+          </div>
+          <label className="consent">
+            <input name="consent" type="checkbox" required /> I agree that my ID
+            card is used only to verify my position and will be deleted after
+            verification.
+          </label>
+          {error && <ErrorNote text={error} />}
+          <button
+            className="primary"
+            disabled={busy || !factories?.length || !factoryId}
+          >
+            {busy ? "Submitting…" : "Submit application"}
+          </button>
+        </form>
+        <a href="/">Back to sign in</a>
+      </section>
+    </main>
+  );
+}

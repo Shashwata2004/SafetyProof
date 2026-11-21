@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import {
   X,
   FileText,
@@ -67,6 +67,7 @@ export function Modal({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const headingId = useId();
   useEffect(() => {
     const node = ref.current;
     node?.showModal();
@@ -75,6 +76,7 @@ export function Modal({
   return (
     <dialog
       ref={ref}
+      aria-labelledby={headingId}
       onCancel={(e) => {
         e.preventDefault();
         close();
@@ -86,7 +88,7 @@ export function Modal({
     >
       <div className="modal-inner">
         <header>
-          <h2>{title}</h2>
+          <h2 id={headingId}>{title}</h2>
           <button
             className="icon-button"
             aria-label="Close dialog"

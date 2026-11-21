@@ -61,6 +61,7 @@ const eventLabels: Record<string, string> = {
   return: "Auditor requested revision",
   accept: "Auditor accepted evidence",
   imported: "Added to verification",
+  comment: "Factory comment",
 };
 
 export function CorrectiveWork({
@@ -134,10 +135,10 @@ export function CorrectiveWork({
             <p>
               {reviewer
                 ? "Share work with the factory and review submitted evidence."
-                : "Assign corrective work, track deadlines and submit evidence to the auditor."}
+                : "Track deadlines, comment and submit evidence to the auditor."}
             </p>
           </div>
-          {writable && (
+          {writable && reviewer && (
             <div className="inline-actions">
               {reviewer && (
                 <button
@@ -214,7 +215,11 @@ export function CorrectiveWork({
             <ClipboardList />
           </span>
           <h3>No tasks in this view</h3>
-          <p>Assign a corrective task with an owner and a deadline.</p>
+          <p>
+            {reviewer
+              ? "Assign a corrective task with an owner and a deadline."
+              : "Assigned work will appear here."}
+          </p>
         </section>
       )}
       {tasks
@@ -362,17 +367,26 @@ function TaskCard({
     if (!file) return;
     await change(async () => {
       const ticket = await api<{ upload_url: string; receipt: string }>(
-        `/v1/corrective-tasks/${task.id}/uploads`, token, "POST", { filename: file.name },
+        `/v1/corrective-tasks/${task.id}/uploads`,
+        token,
+        "POST",
+        { filename: file.name },
       );
       const res = await fetch(ticket.upload_url, {
         method: "PUT",
         headers: { "Content-Type": "application/pdf" },
         body: file,
       });
-      if (!res.ok) throw new Error("The evidence upload failed. Please try again.");
-      await api(`/v1/corrective-tasks/${task.id}/uploads/finalize`, token, "POST", {
-        receipt: ticket.receipt,
-      });
+      if (!res.ok)
+        throw new Error("The evidence upload failed. Please try again.");
+      await api(
+        `/v1/corrective-tasks/${task.id}/uploads/finalize`,
+        token,
+        "POST",
+        {
+          receipt: ticket.receipt,
+        },
+      );
     });
   }
   const event = (action: string) =>
@@ -419,9 +433,7 @@ function TaskCard({
           <span className="row-main">
             <b>{entry.filename}</b>
             <small>
-              {entry.imported_version
-                ? "Added to case documents"
-                : "Factory submission"}
+              From factory{entry.imported_version ? " · Added to case documents" : ""}
             </small>
           </span>
           <button
@@ -461,6 +473,25 @@ function TaskCard({
             ))}
           </ul>
         </details>
+      )}
+      {!reviewer && writable && (
+        <div className="panel-pad">
+          <label>
+            Factory comment
+            <textarea
+              value={note}
+              rows={2}
+              maxLength={3000}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+          <button
+            disabled={busy || !note.trim()}
+            onClick={() => void event("comment")}
+          >
+            Add comment
+          </button>
+        </div>
       )}
       {(managerCanSubmit ||
         (reviewer && writable && task.status === "submitted")) && (

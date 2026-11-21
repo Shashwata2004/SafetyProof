@@ -24,6 +24,19 @@ type Props = {
   review: (run: string, result: string) => void;
 };
 
+function ReferenceText({ text }: { text: string }) {
+  return text.split(/\b((?:CA|FI)[-\u2011\u2013/]\d+)\b/gi).map((part, index) =>
+    index % 2 ? (
+      <mark
+        key={index}
+        className={`reference-id ${part.toUpperCase().startsWith("CA") ? "cap-reference" : "finding-reference"}`}
+      >
+        {part}
+      </mark>
+    ) : part,
+  );
+}
+
 export function CapReview({
   dossier,
   token,
@@ -120,6 +133,10 @@ export function CapReview({
               Check whether the factory’s proposed actions address the
               inspection findings.
             </p>
+            <div className="reference-legend">
+              <span className="reference-id finding-reference">FI · Inspection finding</span>
+              <span className="reference-id cap-reference">CA · Corrective action</span>
+            </div>
           </div>
           <Tag tone={analysis.coverage.complete ? "green" : "amber"}>
             {analysis.coverage.complete
@@ -201,7 +218,7 @@ export function CapReview({
                 <FileText size={17} />
               </span>
               <span className="row-main">
-                <b dir="auto">{action.source.quote}</b>
+                <b dir="auto"><ReferenceText text={action.source.quote} /></b>
                 <small>
                   {action.source.document} · page {action.source.page}
                   {action.deadline ? ` · Due ${dateText(action.deadline)}` : ""}
@@ -281,7 +298,7 @@ function FindingPanel({
     <section className="panel cap-finding">
       <div className="section-head">
         <div>
-          <h2 dir="auto">{finding.claim.source.quote}</h2>
+          <h2 dir="auto"><ReferenceText text={finding.claim.source.quote} /></h2>
           <p>
             {finding.claim.source.document} · page {finding.claim.source.page}
           </p>
@@ -315,15 +332,15 @@ function FindingPanel({
                     ? "Explicit reference"
                     : "Possible match"}
               </Tag>
-              {action.action_ref && <Tag>{action.action_ref}</Tag>}
+              {action.action_ref && <span className="reference-id cap-reference">{action.action_ref}</span>}
             </div>
-            <blockquote dir="auto">{action.source.quote}</blockquote>
+            <blockquote dir="auto"><ReferenceText text={action.source.quote} /></blockquote>
             <p className="muted">
               {suggestion?.reason || "Link added by the reviewer."}
             </p>
             {action.deadline && <p>Target date: {dateText(action.deadline)}</p>}
             {action.reported_status && (
-              <p>Reported status: {action.reported_status}</p>
+              <p>Status at submission (CAP): {action.reported_status}</p>
             )}
             {newest && (
               <p className="muted">
@@ -380,6 +397,9 @@ function FindingPanel({
                   {unlinked.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.action_ref || item.source.document} ·{" "}
+                      {item.reported_status
+                        ? `${item.reported_status.charAt(0).toUpperCase()}${item.reported_status.slice(1)} (CAP)`
+                        : "CAP status unavailable"} ·{" "}
                       {item.source.quote.replace(/\s+/g, " ").slice(0, 90)}
                     </option>
                   ))}

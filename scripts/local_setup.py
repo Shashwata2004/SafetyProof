@@ -46,37 +46,52 @@ for name in ("reviewer", "viewer", "factory_manager"):
 if changed:
     with open(creds, "w", opener=lambda path, flags: os.open(path, flags, 0o600)) as f:
         json.dump(accounts, f, indent=2)
-for name, account in accounts.items():
-    metadata = (
-        {"app_metadata": {"workspace_role": "factory_manager"}}
-        if name == "factory_manager"
-        else {}
+admin_headers = {
+    "apikey": keys["SUPABASE_SERVICE_ROLE_KEY"],
+    "Authorization": "Bearer " + keys["SUPABASE_SERVICE_ROLE_KEY"],
+}
+base = keys["SUPABASE_URL"]
+factory = httpx.get(
+    base + "/rest/v1/factories",
+    headers=admin_headers,
+    params={"name": "eq.Shaluk Threadworks Ltd."},
+)
+factory.raise_for_status()
+factory_id = factory.json()[0]["id"]
+for name in ("reviewer", "viewer", "factory_manager"):
+    account = accounts[name]
+    existing = httpx.get(
+        base + "/rest/v1/account_profiles",
+        headers=admin_headers,
+        params={"email": "eq." + account["email"]},
     )
-    resp = httpx.post(
-        keys["SUPABASE_URL"] + "/auth/v1/admin/users",
-        headers={
-            "apikey": keys["SUPABASE_SERVICE_ROLE_KEY"],
-            "Authorization": "Bearer " + keys["SUPABASE_SERVICE_ROLE_KEY"],
-        },
-        json={**account, **metadata, "email_confirm": True},
-    )
-    if not resp.is_success and resp.json().get("error_code") != "email_exists":
-        resp.raise_for_status()
-    login = httpx.post(
-        keys["SUPABASE_URL"] + "/auth/v1/token",
-        params={"grant_type": "password"},
-        headers={"apikey": keys["SUPABASE_ANON_KEY"]},
-        json=account,
-    )
-    if (
-        login.is_success
-        and name == "factory_manager"
-        and login.json()["user"]["app_metadata"].get("workspace_role")
-        != "factory_manager"
-    ):
-        raise SystemExit("The local Factory Manager lacks its Auth role metadata.")
-    if not login.is_success:
-        raise SystemExit(
-            "The generated local account could not sign in. Check local Supabase Auth."
+    existing.raise_for_status()
+    if existing.json():
+        uid = existing.json()[0]["id"]
+    else:
+        profile = {
+            "role": name,
+            "status": "active",
+            "full_name": name.replace("_", " ").title(),
+        }
+        if name == "factory_manager":
+            profile["factory_id"] = factory_id
+        resp = httpx.post(
+            base + "/auth/v1/admin/users",
+            headers=admin_headers,
+            json={"email": account["email"], "email_confirm": True},
         )
+        resp.raise_for_status()
+        uid = resp.json()["id"]
+        httpx.post(
+            base + "/rest/v1/rpc/sp_register_profile",
+            headers=admin_headers,
+            json={"uid": uid, "p": profile, "secret": account["password"]},
+        ).raise_for_status()
+    if name == "reviewer":
+        httpx.post(
+            base + "/rest/v1/reviewer_factories",
+            headers={**admin_headers, "Prefer": "resolution=ignore-duplicates"},
+            json={"reviewer_id": uid, "factory_id": factory_id},
+        ).raise_for_status()
 print("Local account details are stored in .local/accounts.json")

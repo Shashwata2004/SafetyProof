@@ -1,0 +1,655 @@
+"""Account onboarding uses Supabase Auth and private Postgres profile records."""
+
+import hashlib
+import io
+import re
+import secrets
+from datetime import UTC, datetime
+from typing import Literal
+from urllib.parse import urlencode
+from uuid import UUID, uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from PIL import Image
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .platform import PlatformError
+
+EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
+INVALID_INVITE = (
+    "Invite invalid, expired or already used. Ask the admin for a new link."
+)
+CARD_LIMIT = 5 * 1024 * 1024
+CARD_BUCKET = "manager-id-cards"
+CARD_TYPES = {"PNG": "image/png", "JPEG": "image/jpeg"}
+ROLE_TYPES = Literal[
+    "Compliance Officer", "Independent Auditor", "Buyer Sustainability Team"
+]
+PROFILE_FIELDS = "id,email,full_name,role,status,organization,role_type,phone,job_title,requested_factory_id,factory_id,id_card_deleted_at,id_card_number,membership_number,consent_at,reject_reason,created_at"
+
+
+class Identity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value):
+        value = value.strip().lower()
+        if not EMAIL.fullmatch(value):
+            raise ValueError("Enter a valid email address.")
+        return value
+
+
+class Login(Identity):
+    password: str = Field(min_length=1, max_length=72, repr=False)
+
+
+class Reviewer(Identity):
+    full_name: str = Field(min_length=1, max_length=160)
+    organization: str | None = Field(default=None, max_length=160)
+    role_type: ROLE_TYPES | None = None
+    factory_ids: list[UUID] = Field(default_factory=list, max_length=30)
+
+
+class Assignments(BaseModel):
+    factory_ids: list[UUID] = Field(max_length=30)
+
+
+class Manager(Login):
+    full_name: str = Field(min_length=1, max_length=160)
+    phone: str = Field(min_length=6, max_length=32)
+    factory_id: UUID
+    job_title: str = Field(default="Factory Manager", min_length=1, max_length=120)
+    id_card_number: str | None = Field(default=None, max_length=120)
+    membership_number: str | None = Field(default=None, max_length=120)
+    consent: Literal[True]
+    website: str = Field(default="", max_length=200)
+    upload_key: str = Field(pattern=r"^[a-f0-9]{32}/[a-f0-9]{32}$")
+
+
+class Token(BaseModel):
+    token: str = Field(min_length=1, max_length=200, repr=False)
+
+
+class SetPassword(Token):
+    password: str = Field(min_length=8, max_length=72, repr=False)
+
+
+class Decision(BaseModel):
+    factory_id: UUID | None = None
+    reason: str | None = Field(default=None, max_length=1500)
+
+
+def digest(value):
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def check_password(value):
+    if len(value) < 8 or len(value.encode()) > 72 or "\x00" in value:
+        raise HTTPException(
+            422, "Use at least 8 characters and at most 72 UTF-8 bytes."
+        )
+
+
+async def rate(db, request, scope, limit, identity=""):
+    # Vercel sets the client IP on ingress. Local requests use the socket peer.
+    from os import environ
+
+    ip = (
+        request.headers.get("x-vercel-forwarded-for", "").split(",")[0].strip()
+        if environ.get("VERCEL")
+        else ""
+    )
+    ip = ip or (request.client.host if request.client else "unknown")
+    if not await db.rpc(
+        "account_rate", scope_name=scope, hashed_key=digest(ip), limit_count=limit
+    ):
+        raise HTTPException(429, "Too many attempts. Try again later.")
+    if identity and not await db.rpc(
+        "account_rate",
+        scope_name=scope + "-identity",
+        hashed_key=digest(identity),
+        limit_count=10,
+    ):
+        raise HTTPException(429, "Too many attempts. Try again later.")
+
+
+async def provision(db, email, profile, password=None):
+    try:
+        auth = await db.call(
+            "POST",
+            "/auth/v1/admin/users",
+            admin=True,
+            data={"email": email, "email_confirm": True},
+        )
+    except PlatformError as exc:
+        if exc.status in (400, 409, 422):
+            raise HTTPException(
+                409, "An account or application already uses this email."
+            ) from exc
+        raise HTTPException(
+            503, "Account provisioning is temporarily unavailable."
+        ) from exc
+    uid = auth["id"]
+    try:
+        await db.rpc("register_profile", uid=uid, p=profile, secret=password)
+    except PlatformError as exc:
+        # Do not delete an account if a timed-out transaction actually committed.
+        existing = await db.rows(
+            "account_profiles", fields="id", filters={"id": "eq." + uid}
+        )
+        if not existing:
+            await db.call("DELETE", "/auth/v1/admin/users/" + uid, admin=True)
+            raise HTTPException(
+                503, "Account provisioning is temporarily unavailable."
+            ) from exc
+    return uid
+
+
+async def factory(db, fid):
+    return await db.one("factories", fid)
+
+
+async def replace_assignments(db, uid, ids):
+    await db.rpc(
+        "reviewer_assign",
+        uid=str(uid),
+        factories=list(dict.fromkeys(str(i) for i in ids)),
+    )
+
+
+def require_name(value):
+    if not value.strip():
+        raise HTTPException(422, "Full name is required.")
+    return value.strip()
+
+
+def card_type(data):
+    if not data or len(data) > CARD_LIMIT:
+        raise HTTPException(413, "Upload an office ID card up to 5 MB.")
+    if data.startswith(b"%PDF-") and b"%%EOF" in data[-2048:]:
+        import pypdfium2
+
+        try:
+            with pypdfium2.PdfDocument(data) as document:
+                if not 1 <= len(document) <= 5:
+                    raise ValueError()
+            return "application/pdf"
+        except Exception:
+            raise HTTPException(
+                422, "Upload a readable office ID PDF of up to five pages."
+            ) from None
+    if data.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff")):
+        try:
+            with Image.open(io.BytesIO(data)) as image:
+                kind = CARD_TYPES[image.format]
+                if image.width * image.height > 20_000_000:
+                    raise ValueError()
+                image.verify()
+            return kind
+        except (
+            ValueError,
+            KeyError,
+            OSError,
+            SyntaxError,
+            Image.DecompressionBombError,
+        ):
+            pass
+    raise HTTPException(422, "Upload a valid JPG, PNG or PDF office ID card.")
+
+
+async def delete_card(db, key):
+    await db.call(
+        "DELETE",
+        "/storage/v1/object/" + CARD_BUCKET,
+        admin=True,
+        data={"prefixes": [key]},
+    )
+
+
+async def finish_card_cleanup(db, uid, path):
+    await delete_card(db, path)
+    await db.call(
+        "PATCH",
+        "/rest/v1/account_profiles",
+        admin=True,
+        params={"id": "eq." + str(uid), "id_card_path": "eq." + path},
+        data={
+            "id_card_path": None,
+            "id_card_type": None,
+            "id_card_deleted_at": datetime.now(UTC).isoformat(),
+        },
+    )
+
+
+def account_router(user, db_dep):
+    router = APIRouter(prefix="/v1")
+
+    async def admin(u=Depends(user)):
+        if u.role != "admin":
+            raise HTTPException(403, "Administrator access required.")
+        return u
+
+    async def invite(db, uid):
+        raw = secrets.token_urlsafe(32)
+        await db.rpc("invite_issue", uid=str(uid), digest=digest(raw))
+        app_url = db.settings.app_url.rstrip("/")
+        return {
+            "invite_url": app_url + "/set-password#" + urlencode({"token": raw}),
+            "expires_in_hours": 48,
+        }
+
+    @router.get("/me")
+    async def me(u=Depends(user)):
+        return {"id": u.id, "role": u.role, "factory_id": u.factory_id}
+
+    @router.post("/login")
+    async def login(body: Login, request: Request, db=Depends(db_dep)):
+        await rate(db, request, "login", 60, body.email)
+        failure = HTTPException(401, "Email or password is incorrect.")
+        try:
+            session = await db.call(
+                "POST",
+                "/auth/v1/token",
+                params={"grant_type": "password"},
+                data={"email": body.email, "password": body.password},
+            )
+        except PlatformError as exc:
+            if exc.status not in (400, 401, 403, 422):
+                raise HTTPException(
+                    503, "Sign-in is temporarily unavailable."
+                ) from None
+            if len(body.password.encode()) > 72 or "\x00" in body.password:
+                raise failure from None
+            status = await db.rpc(
+                "inactive_login", login_email=body.email, secret=body.password
+            )
+            if not status:
+                raise failure from None
+            messages = {
+                "pending_approval": "Your application is waiting for admin approval.",
+                "rejected": "Your application was rejected: "
+                + (status["reason"] or ""),
+                "deactivated": "Your account is deactivated.",
+            }
+            raise HTTPException(
+                403,
+                messages.get(
+                    status["status"], "Ask the admin for a password setup link."
+                ),
+            ) from None
+        profiles = await db.rows(
+            "account_profiles",
+            fields="status",
+            filters={"id": "eq." + session["user"]["id"]},
+        )
+        if not profiles or profiles[0]["status"] != "active":
+            raise failure
+        return {key: session[key] for key in ("access_token", "refresh_token")}
+
+    @router.get("/factories")
+    async def factories(db=Depends(db_dep)):
+        return await db.rows("factories", fields="id,name", order="name")
+
+    @router.get("/factories/{fid}/address")
+    async def address(fid: UUID, db=Depends(db_dep)):
+        # Public demo address only; no operational or account data.
+        row = await db.one("factories", fid, fields="address")
+        return {"address": row["address"]}
+
+    @router.get("/manager/work")
+    async def manager_work(u=Depends(user), db=Depends(db_dep)):
+        if u.role != "factory_manager":
+            raise HTTPException(403, "Factory Manager access required.")
+        bound = await factory(db, u.factory_id)
+        tasks = await db.rows(
+            "corrective_tasks",
+            token=u.token,
+            fields="id,case_id,title,due_on,status",
+            order="due_on,id",
+        )
+        return {"factory": bound, "tasks": tasks}
+
+    @router.get("/reviewer/factories")
+    async def assigned_factories(u=Depends(user), db=Depends(db_dep)):
+        if u.role != "reviewer":
+            raise HTTPException(403, "Review access required.")
+        return await db.rows(
+            "reviewer_factories",
+            fields="factories(id,name,address)",
+            filters={"reviewer_id": "eq." + u.id},
+        )
+
+    @router.post("/signup/factory-manager/upload")
+    async def reserve_card(request: Request, db=Depends(db_dep)):
+        await rate(db, request, "card-reservation", 10)
+        raw = secrets.token_hex(16)
+        key = uuid4().hex + "/" + raw
+        result = await db.call(
+            "POST",
+            "/storage/v1/object/upload/sign/" + CARD_BUCKET + "/" + key,
+            admin=True,
+            data={},
+        )
+        from time import time
+
+        expires = str(int(time()) + 900)
+        from hmac import digest as sign
+
+        signature = sign(
+            db.settings.supabase_service_role_key.encode(),
+            (key + expires).encode(),
+            "sha256",
+        ).hex()
+        return {
+            "upload_key": key,
+            "upload_url": db.base + "/storage/v1" + result["url"],
+            "receipt": expires + "." + signature,
+        }
+
+    @router.post("/signup/factory-manager", status_code=201)
+    async def signup(body: Manager, request: Request, db=Depends(db_dep)):
+        await rate(db, request, "signup", 10, body.email)
+        check_password(body.password)
+        if body.website or not re.fullmatch(
+            r"[+\d][\d ()+.-]{5,31}", body.phone.strip()
+        ):
+            raise HTTPException(422, "Check the application fields.")
+        name = require_name(body.full_name)
+        try:
+            await factory(db, body.factory_id)
+        except PlatformError as exc:
+            if exc.status == 404:
+                raise HTTPException(422, "Choose an existing factory.") from None
+            raise
+        from hmac import compare_digest, digest as sign
+        from time import time
+
+        receipt = request.headers.get("x-upload-receipt", "")
+        expires, _, signature = receipt.partition(".")
+        if (
+            not expires.isdigit()
+            or len(expires) > 12
+            or int(expires) < time()
+            or not compare_digest(
+                signature,
+                sign(
+                    db.settings.supabase_service_role_key.encode(),
+                    (body.upload_key + expires).encode(),
+                    "sha256",
+                ).hex(),
+            )
+        ):
+            raise HTTPException(
+                422, "The upload expired. Choose the office ID card again."
+            )
+        path = body.upload_key
+        # Claim the staged upload once; a repeated request cannot delete an accepted card.
+        if not await db.rpc("card_claim", card_path=path):
+            raise HTTPException(
+                409, "This upload was already used. Upload the ID card again."
+            )
+        stored_path = "verified/" + uuid4().hex
+        try:
+            data = await db.call(
+                "GET",
+                "/storage/v1/object/" + CARD_BUCKET + "/" + path,
+                admin=True,
+                raw=True,
+            )
+            kind = card_type(data)
+            await db.call(
+                "POST",
+                "/storage/v1/object/" + CARD_BUCKET + "/" + stored_path,
+                admin=True,
+                body=data,
+                headers={"Content-Type": kind},
+            )
+            await delete_card(db, path)
+            await provision(
+                db,
+                body.email,
+                {
+                    "role": "factory_manager",
+                    "status": "pending_approval",
+                    "full_name": name,
+                    "phone": body.phone.strip(),
+                    "job_title": body.job_title.strip() or "Factory Manager",
+                    "requested_factory_id": str(body.factory_id),
+                    "id_card_path": stored_path,
+                    "id_card_type": kind,
+                    "id_card_number": body.id_card_number,
+                    "membership_number": body.membership_number,
+                    "consent_at": datetime.now(UTC).isoformat(),
+                },
+                body.password,
+            )
+        except (HTTPException, PlatformError):
+            # Keep the file if provisioning may have succeeded before a network timeout.
+            profiles = await db.rows(
+                "account_profiles",
+                fields="id",
+                filters={"id_card_path": "eq." + stored_path},
+            )
+            if not profiles:
+                await delete_card(db, stored_path)
+            await delete_card(db, path)
+            raise
+        return {"status": "pending_approval"}
+
+    @router.post("/invites/validate")
+    async def validate(body: Token, request: Request, db=Depends(db_dep)):
+        await rate(db, request, "invite-validate", 50)
+        rows = await db.rows(
+            "reviewer_invites",
+            fields="reviewer_id",
+            filters={
+                "token_hash": "eq." + digest(body.token),
+                "used_at": "is.null",
+                "expires_at": "gt." + datetime.now(UTC).isoformat(),
+            },
+        )
+        if not rows:
+            raise HTTPException(400, INVALID_INVITE)
+        return {"valid": True}
+
+    @router.post("/invites/set-password")
+    async def set_password(body: SetPassword, request: Request, db=Depends(db_dep)):
+        await rate(db, request, "set-password", 20, digest(body.token))
+        check_password(body.password)
+        await db.rpc(
+            "invite_accept", digest=digest(body.token), new_password=body.password
+        )
+        return {"status": "active"}
+
+    @router.get("/admin/reviewers")
+    async def reviewers(u=Depends(admin), db=Depends(db_dep)):
+        return await db.rows(
+            "account_profiles",
+            fields="id,email,full_name,organization,role_type,status,created_at,reviewer_factories(factory_id)",
+            filters={"role": "eq.reviewer"},
+            order="created_at.desc",
+        )
+
+    @router.post("/admin/reviewers", status_code=201)
+    async def add_reviewer(body: Reviewer, u=Depends(admin), db=Depends(db_dep)):
+        for fid in set(body.factory_ids):
+            await factory(db, fid)
+        uid = await provision(
+            db,
+            body.email,
+            {
+                "role": "reviewer",
+                "status": "pending",
+                "full_name": require_name(body.full_name),
+                "organization": body.organization,
+                "role_type": body.role_type,
+            },
+        )
+        await replace_assignments(db, uid, body.factory_ids)
+        return {"id": uid, **await invite(db, uid)}
+
+    @router.post("/admin/reviewers/{uid}/resend-invite")
+    async def resend(uid: UUID, request: Request, u=Depends(admin), db=Depends(db_dep)):
+        await rate(db, request, "invite-resend", 40)
+        return await invite(db, uid)
+
+    @router.post("/admin/reviewers/{uid}/factories")
+    async def assign(
+        uid: UUID, body: Assignments, u=Depends(admin), db=Depends(db_dep)
+    ):
+        await replace_assignments(db, uid, body.factory_ids)
+        return {"updated": True}
+
+    @router.get("/admin/manager-applications")
+    async def applications(u=Depends(admin), db=Depends(db_dep)):
+        return await db.rows(
+            "account_profiles",
+            fields=PROFILE_FIELDS,
+            filters={"role": "eq.factory_manager"},
+            order="created_at.desc",
+        )
+
+    async def application_row(db, uid):
+        row = await db.one(
+            "account_profiles",
+            uid,
+            fields=PROFILE_FIELDS + ",id_card_path,id_card_type",
+        )
+        if row["role"] != "factory_manager":
+            raise HTTPException(404, "Application unavailable.")
+        return row
+
+    @router.get("/admin/manager-applications/{uid}")
+    async def application(uid: UUID, u=Depends(admin), db=Depends(db_dep)):
+        row = await application_row(db, uid)
+        card_present = bool(row.pop("id_card_path"))
+        row["has_id_card"] = card_present and row["status"] == "pending_approval"
+        row["card_cleanup_pending"] = (
+            card_present and row["status"] != "pending_approval"
+        )
+        row["requested_factory"] = (
+            await factory(db, row["requested_factory_id"])
+            if row["requested_factory_id"]
+            else None
+        )
+        row["active_manager_factory_ids"] = sorted(
+            {
+                p["factory_id"]
+                for p in await db.rows(
+                    "account_profiles",
+                    fields="factory_id",
+                    filters={"role": "eq.factory_manager", "status": "eq.active"},
+                )
+                if p["factory_id"]
+            }
+        )
+        return row
+
+    @router.get("/admin/manager-applications/{uid}/id-card")
+    async def id_card(uid: UUID, u=Depends(admin), db=Depends(db_dep)):
+        row = await application_row(db, uid)
+        if not row["id_card_path"] or row["status"] != "pending_approval":
+            raise HTTPException(404, "Office ID card is unavailable.")
+        data = await db.call(
+            "GET",
+            "/storage/v1/object/" + CARD_BUCKET + "/" + row["id_card_path"],
+            admin=True,
+            raw=True,
+        )
+        return StreamingResponse(
+            (data[offset : offset + 65536] for offset in range(0, len(data), 65536)),
+            media_type=row["id_card_type"],
+            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        )
+
+    @router.post("/admin/accounts/{uid}/{choice}")
+    async def decide(
+        uid: UUID,
+        choice: Literal["approve", "reject", "deactivate"],
+        body: Decision,
+        u=Depends(admin),
+        db=Depends(db_dep),
+    ):
+        note = (body.reason or "").strip() or None
+        if choice == "reject" and not note:
+            raise HTTPException(422, "Enter a reason for rejection.")
+        path = await db.rpc(
+            "account_decide",
+            actor_id=u.id,
+            uid=str(uid),
+            choice=choice,
+            factory=str(body.factory_id) if body.factory_id else None,
+            note=note,
+        )
+        if path:
+            await finish_card_cleanup(db, uid, path)
+        return {"updated": True}
+
+    @router.delete("/admin/manager-applications/{uid}/id-card")
+    async def retry_cleanup(uid: UUID, u=Depends(admin), db=Depends(db_dep)):
+        row = await application_row(db, uid)
+        if row["status"] == "pending_approval":
+            raise HTTPException(
+                409, "Decide the application before deleting its office ID."
+            )
+        if row["id_card_path"]:
+            await finish_card_cleanup(db, uid, row["id_card_path"])
+        return {"updated": True}
+
+    @router.get("/admin/cases/{cid}")
+    async def admin_case(cid: UUID, u=Depends(admin), db=Depends(db_dep)):
+        import asyncio
+
+        case = await db.one(
+            "cases",
+            cid,
+            fields="id,title,factory,period_start,period_end,archived,deleting",
+        )
+        if case.pop("deleting"):
+            raise HTTPException(404, "Case unavailable.")
+        filters = {"case_id": "eq." + str(cid)}
+        runs, tasks, documents = await asyncio.gather(
+            db.rows(
+                "verification_runs",
+                fields="id,status,created_at",
+                filters=filters,
+                order="created_at.desc,id.desc",
+            ),
+            db.rows(
+                "corrective_tasks",
+                fields="id,title,assignee,due_on,status",
+                filters=filters,
+                order="due_on,id",
+            ),
+            db.rows(
+                "documents", fields="id,title,role", filters=filters, order="title,id"
+            ),
+        )
+        run = next(
+            (item for item in runs if item["status"] in ("complete", "partial")), None
+        )
+        results = (
+            await db.rows(
+                "results",
+                fields="id,claim,outcome,reason",
+                filters={"run_id": "eq." + run["id"]},
+            )
+            if run
+            else []
+        )
+        return {
+            "case": case,
+            "run": run,
+            "results": results,
+            "tasks": tasks,
+            "documents": documents,
+        }
+
+    @router.get("/admin/factories")
+    async def factory_overview(u=Depends(admin), db=Depends(db_dep)):
+        return await db.rpc("factory_overview")
+
+    return router

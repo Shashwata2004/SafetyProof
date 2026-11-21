@@ -27,6 +27,11 @@ import type { components } from "@/lib/schema";
 import { Busy, DocIcon, ErrorNote, Modal, Tag } from "./ui";
 import { Preview } from "./viewer";
 import { sampleCatalog } from "@/lib/samples";
+import {
+  documentsForMonth,
+  inspectionMonths,
+  latestReadyVersions,
+} from "@/lib/verification-month";
 
 type Props = {
   dossier: Dossier;
@@ -41,12 +46,7 @@ type Props = {
 const processed = (v: Version) =>
   v.status === "ready" || v.status === "partial";
 function latest(versions: Version[]) {
-  const byDoc = new Map<string, Version>();
-  for (const v of versions.filter(processed)) {
-    if ((byDoc.get(v.document_id)?.revision || 0) < v.revision)
-      byDoc.set(v.document_id, v);
-  }
-  return [...byDoc.values()].map((v) => v.id);
+  return latestReadyVersions(versions).map((v) => v.id);
 }
 
 export function Documents({
@@ -68,10 +68,17 @@ export function Documents({
     [busy, setBusy] = useState(false),
     [selected, setSelected] = useState<string[]>(() => latest(d.versions)),
     [custom, setCustom] = useState(false);
+  const [month, setMonth] = useState("");
+  const [selectionOpen, setSelectionOpen] = useState(false);
   const versionKey = d.versions.map((v) => v.id + v.status).join(",");
   useEffect(() => {
-    if (!custom) setSelected(latest(d.versions));
-  }, [versionKey, custom, d.versions]);
+    if (!custom)
+      setSelected(
+        month
+          ? documentsForMonth(d.documents, d.versions, month)
+          : latest(d.versions),
+      );
+  }, [versionKey, custom, month, d.documents, d.versions]);
   function toggle(v: Version) {
     setCustom(true);
     setSelected((prev) =>
@@ -99,6 +106,20 @@ export function Documents({
       setBusy(false);
     }
   }
+  async function chooseMonth(value: string) {
+    setMonth(value);
+    setCustom(false);
+    setSelectionOpen(true);
+    setBusy(true);
+    setErr("");
+    try {
+      await refresh();
+    } catch (error) {
+      setErr(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
   const sel = d.versions.filter((v) => selected.includes(v.id)),
     count = sel.reduce((a, v) => a + v.readable_pages, 0),
     pages = sel.reduce((a, v) => a + v.page_count, 0);
@@ -107,7 +128,25 @@ export function Documents({
       d.documents.find((doc) => doc.id === v.document_id)?.role ===
       "inspection",
   );
-  const valid = sel.length >= 2 && hasInspection;
+  const hasMonthInspection =
+    !month ||
+    sel.some((v) => {
+      if (
+        d.documents.find((doc) => doc.id === v.document_id)?.role !==
+        "inspection"
+      )
+        return false;
+      const from = (v.period_start || v.period_end || v.issued_on)?.slice(0, 7);
+      const to = (v.period_end || v.period_start || v.issued_on)?.slice(0, 7);
+      return !!from && !!to && from <= month && to >= month;
+    });
+  const valid =
+    sel.length >= 2 && sel.length <= 10 && hasInspection && hasMonthInspection;
+  const availableIds = new Set(latest(d.versions));
+  const months = inspectionMonths(d.documents, d.versions);
+  const choices = d.versions.filter(
+    (v) => selected.includes(v.id) || availableIds.has(v.id),
+  );
   async function run() {
     await act(async () => {
       const r = await api<components["schemas"]["RunTicket"]>(
@@ -228,6 +267,91 @@ export function Documents({
             Compare the selected records and review the source passage behind
             each flag.
           </p>
+          <div className="verification-month">
+            <label htmlFor="verification-month">Verification month</label>
+            <select
+              id="verification-month"
+              value={month}
+              disabled={!writable || busy || months.length === 0}
+              onChange={(event) => void chooseMonth(event.target.value)}
+            >
+              <option value="">
+                {months.length
+                  ? "Choose inspection month"
+                  : "No inspection months available"}
+              </option>
+              {months.map((value) => (
+                <option key={value} value={value}>
+                  {new Intl.DateTimeFormat("en", {
+                    month: "long",
+                    year: "numeric",
+                    timeZone: "UTC",
+                  }).format(new Date(`${value}-01T00:00:00Z`))}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="hint">
+            Only months covered by a processed inspection report are available.
+          </p>
+          {month && (
+            <p className="hint">
+              Includes this month’s records, the previous inspection, CAPs and
+              procedures available by month-end. Check for any missing drill or
+              follow-up records and adjust the selection below.
+            </p>
+          )}
+          <details
+            className="verification-selection"
+            open={selectionOpen}
+            onToggle={(event) => setSelectionOpen(event.currentTarget.open)}
+          >
+            <summary>
+              Documents to verify ({sel.length}){custom ? " · adjusted" : ""}
+            </summary>
+            <div className="verification-choices">
+              {choices.length ? (
+                choices.map((v) => {
+                  const doc = d.documents.find(
+                    (item) => item.id === v.document_id,
+                  )!;
+                  return (
+                    <label key={v.id} className="verification-choice">
+                      <input
+                        type="checkbox"
+                        aria-label={`Verify ${doc.title} revision ${v.revision}`}
+                        checked={selected.includes(v.id)}
+                        disabled={!writable || busy}
+                        onChange={() => toggle(v)}
+                      />
+                      <span>
+                        <b>{doc.title}</b>
+                        <small>
+                          {roles[doc.role]} · Revision {v.revision}
+                        </small>
+                        <small>
+                          {v.period_start || v.issued_on || "Date not provided"}
+                          {v.period_end && v.period_end !== v.period_start
+                            ? ` – ${v.period_end}`
+                            : ""}
+                        </small>
+                      </span>
+                    </label>
+                  );
+                })
+              ) : (
+                <p>No processed documents are available yet.</p>
+              )}
+            </div>
+            {month && (
+              <button
+                disabled={!writable || busy}
+                onClick={() => void chooseMonth(month)}
+              >
+                {custom ? "Restore month selection" : "Refresh month selection"}
+              </button>
+            )}
+          </details>
           <dl>
             <div>
               <dt>Selected documents</dt>
@@ -253,7 +377,11 @@ export function Documents({
           )}
           {!valid && (
             <p className="hint">
-              Select an inspection and at least one other document.
+              {!hasMonthInspection
+                ? "Add or select an inspection report covering this month."
+                : sel.length > 10
+                  ? "Select up to 10 documents for one verification run."
+                  : "Select an inspection and at least one other document."}
             </p>
           )}
           {writable && (

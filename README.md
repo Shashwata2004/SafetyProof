@@ -19,10 +19,11 @@ mkdir -p .local/tessdata
 for lang in eng ben; do
   curl -fsS "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/$lang.traineddata" -o ".local/tessdata/$lang.traineddata"
 done
+npx --yes supabase@2.98.2 migration up --local
 python scripts/local_setup.py
 ```
 
-The setup script records the generated local reviewer, viewer and Factory Manager passwords in `.local/accounts.json`. Both this file and the root `.env` are ignored by Git. Keep the local Supabase stack on a trusted network. Choose **Sign in** and use the reviewer account, then **Load sample case**. The original sample files are also available in **Document library** without signing in.
+The setup script records the generated local reviewer, viewer and Factory Manager passwords in `.local/accounts.json`. Both this file and the root `.env` are ignored by Git. Keep the local Supabase stack on a trusted network. Choose **Sign in** and use the reviewer account, then **Load sample case**. The document library is available after sign-in.
 
 Add a free-tier project key as `GEMINI_API_KEY` in the root `.env`. Before starting the backend, check generation and embeddings with `PYTHONPATH=backend python scripts/check_models.py`. Set `MIN_REQUEST_INTERVAL` according to the project's quota. Start the services in separate terminals.
 
@@ -41,11 +42,24 @@ The three review flags are contradiction, unsupported claim and missing document
 
 Upload a Corrective Action Plan using the **CAP** document role and include it in a run. **CAP matching** shows source-cited actions and suggests links from explicit finding references or shared asset identifiers. A reviewer may confirm, dismiss, or manually add a link. Each decision belongs to its snapshot.
 
-## Factory Manager workflow
+## Accounts and factory access
 
-Sign in as a reviewer, open a case and choose **Corrective work → Share with manager**. Enter the email of a confirmed Supabase Auth account with `app_metadata.workspace_role` set to `factory_manager`. Local setup provisions `factory-manager@safetyproof.test`. The Factory Manager can open shared cases, assign work to a person or department, set deadlines, start tasks and upload corrective evidence. Private audit records and verification results stay in the auditor workspace.
+The account migration adds eight fictional factories with Bangladeshi place names. Existing cases and test accounts are carried forward. The local setup retains the existing demo-only reviewer, viewer and Shaluk Factory Manager. Their emails are `reviewer@safetyproof.test`, `viewer@safetyproof.test` and `factory-manager@safetyproof.test`. Their randomly generated local credentials are in `.local/accounts.json`.
 
-The reviewer can open the submitted PDF, request a revision or accept the evidence. **Add to verification** brings the same PDF into the case document reader for a future verification run. Factory submissions and reviewer decisions remain in task history.
+Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your shell or private environment, then run:
+
+```bash
+PYTHONPATH=backend .venv/bin/python scripts/seed_accounts.py --demo-reviewers
+```
+
+The seed can be rerun. It provisions the env-configured admin without resetting the password of an existing admin. The optional flag creates three fictional pending reviewers with different factory assignments. They have no passwords or pre-issued links. Use **Resend invite** to issue the first link. Set `APP_URL` to the frontend origin for invite links, for example `http://localhost:3000` for local development. Keep public Supabase Auth sign-ups disabled. The app submits manager applications using its own controlled endpoint.
+
+- **Admin** sees factory conditions, case assessments and corrective task status. From **Reviewers**, create a reviewer, assign factories and copy a one-time invite link. The reviewer sets a password on `/set-password`. Invitations expire after 48 hours and resending invalidates the previous link. The app sends no email. Admins can deactivate accounts and cannot start a verification run.
+- **Reviewer** uses assigned factory cases to upload audit evidence, run and review verifications, match CAP actions and assign corrective work.
+- **Factory Manager** chooses **Apply as a Factory Manager** on the login screen. The application needs an existing factory, contact details, an office ID and a password. Admins can confirm or change the factory and approve, or reject with a reason. The applicant checks the decision by signing in with the same credentials. Approval limits the account to one factory. Managers can track assigned corrective tasks, comment, start work and submit new evidence PDFs. The reviewer can accept evidence, return it for revision or add it to verification.
+- **Office ID** files go to the private `manager-id-cards` bucket. Only an authenticated admin can retrieve a pending application's validated file. Decisions delete the stored card and stamp the deletion date. If storage is temporarily unavailable, the admin can retry the deletion from the application detail. Login, invitation setup and signup have database-backed rate limits.
+
+See [the architecture brief](docs/architecture-brief.md) for entry points, permissions and job flow.
 
 ## Verification and evaluation
 
@@ -56,7 +70,7 @@ npm --prefix frontend run build
 PYTHONPATH=backend .venv/bin/python evaluation/run.py --split held_out --baseline
 ```
 
-The integration test uses real local Supabase and a scripted inference boundary. The evaluation command requires running services and a configured Gemini key and calls the real provider. Results go under `evaluation/output/`. Document fixtures are fictional. Their labels are separate from the application inputs. More details are in [evaluation/README.md](evaluation/README.md).
+The integration tests use real local Supabase Auth, Postgres and Storage. The existing document workflow test uses scripted inference. The account test covers invite expiry and single-use, role boundaries, status-aware login, factory reassignment and office ID deletion. Run only the account test with `PYTHONPATH=backend .venv/bin/pytest -q backend/tests/test_accounts.py`. The evaluation command requires running services and a configured Gemini key and calls the real provider. Results go under `evaluation/output/`. Document fixtures are fictional. Their labels are separate from the application inputs. More details are in [evaluation/README.md](evaluation/README.md).
 
 ## Deployment and disclosure
 
