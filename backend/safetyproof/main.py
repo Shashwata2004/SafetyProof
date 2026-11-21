@@ -6,7 +6,7 @@ from typing import Literal
 from uuid import UUID, uuid4, uuid5
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -178,12 +178,7 @@ def public_config():
         "publishable_key": cfg.supabase_anon_key,
         "ai_configured": bool(cfg.gemini_api_key),
         "models": cfg.provenance(),
-        "limits": {
-            "file_mb": 10,
-            "file_pages": 20,
-            "case_documents": 10,
-            "case_pages": 100,
-        },
+        "limits": {"case_documents": 10},
     }
 
 
@@ -369,12 +364,31 @@ async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depen
 
 
 @app.get("/v1/document-versions/{vid}/pages")
-async def pages(vid: UUID, u: User = Depends(user), d=Depends(db)):
+async def pages(
+    vid: UUID,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=20),
+    u: User = Depends(user),
+    d=Depends(db),
+):
     await d.one("document_versions", vid, token=u.token)
+    if limit is not None:
+        return await d.call(
+            "GET",
+            "/rest/v1/pages",
+            token=u.token,
+            params={
+                "version_id": "eq." + str(vid),
+                "select": "id,page_no,method,quality,text",
+                "order": "page_no",
+                "offset": offset,
+                "limit": limit,
+            },
+        )
     return await d.rows(
         "pages",
         token=u.token,
-        filters={"version_id": "eq." + str(vid)},
+        filters={"version_id": "eq." + str(vid), "page_no": "gt." + str(offset)},
         order="page_no",
     )
 
@@ -710,7 +724,6 @@ async def submit_task_evidence(
     d=Depends(db),
     content_type: str = Header(default=""),
 ):
-    from .pdf import MAX_BYTES
 
     task = await d.one("corrective_tasks", tid, token=u.token)
     if await corrective_role(d, u, task["case_id"]) != "manager":
@@ -726,8 +739,6 @@ async def submit_task_evidence(
         raise HTTPException(422, "Choose a PDF with a valid filename.")
     data = bytearray()
     async for chunk in request.stream():
-        if len(data) + len(chunk) > MAX_BYTES:
-            raise HTTPException(413, "A PDF must be under 10 MB.")
         data.extend(chunk)
     if content_type.split(";")[0] != "application/pdf" or b"%PDF-" not in data[:1024]:
         raise HTTPException(422, "Choose a PDF file.")
@@ -794,7 +805,6 @@ async def reserve_corrective_upload(
 async def finalize_corrective_upload(
     tid: UUID, body: CorrectiveFinalize, u: User = Depends(user), d=Depends(db)
 ):
-    from .pdf import MAX_BYTES
     from .upload_tokens import verify
 
     try:
@@ -815,9 +825,9 @@ async def finalize_corrective_upload(
         raise HTTPException(409, "This task is not accepting evidence.")
     key = f"{task['case_id']}/corrective/{receipt['id']}.pdf"
     data = await d.download(key)
-    if len(data) > MAX_BYTES or b"%PDF-" not in data[:1024]:
+    if b"%PDF-" not in data[:1024]:
         await d.remove([key])
-        raise HTTPException(422, "Choose a PDF under 10 MB.")
+        raise HTTPException(422, "Choose a valid PDF.")
     await d.rpc(
         "corrective_event",
         tid=str(tid),

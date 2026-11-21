@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   X,
   FileText,
@@ -11,8 +11,51 @@ import {
   Files,
   LoaderCircle,
   TriangleAlert,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Role } from "@/lib/api";
+
+export function PasswordField({
+  id,
+  label = "Password",
+  name = "password",
+  newPassword = false,
+}: {
+  id?: string;
+  label?: string;
+  name?: string;
+  newPassword?: boolean;
+}) {
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="password-field">
+      <label htmlFor={inputId}>{label}</label>
+      <div className="password-control">
+        <input
+          id={inputId}
+          name={name}
+          type={visible ? "text" : "password"}
+          autoComplete={newPassword ? "new-password" : "current-password"}
+          minLength={newPassword ? 8 : undefined}
+          maxLength={newPassword ? 72 : undefined}
+          required
+        />
+        <button
+          type="button"
+          className="password-toggle"
+          aria-label={`${visible ? "Hide" : "Show"} ${label.toLowerCase()}`}
+          aria-controls={inputId}
+          onClick={() => setVisible(!visible)}
+        >
+          {visible ? <EyeOff size={18} aria-hidden /> : <Eye size={18} aria-hidden />}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function DocIcon({ role, size = 20 }: { role: Role; size?: number }) {
   const Icon = {

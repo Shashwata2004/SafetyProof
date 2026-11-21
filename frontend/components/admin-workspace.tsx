@@ -6,6 +6,7 @@ import { api, apiBase, dateText, message, outcomes } from "@/lib/api";
 import type { Outcome } from "@/lib/api";
 import type { Factory } from "./onboarding";
 import { Busy, ErrorNote, Modal, Tag } from "./ui";
+import { ReviewerFields, reviewerDetails } from "./reviewer-fields";
 
 type Reviewer = {
   id: string;
@@ -65,13 +66,6 @@ type View =
   | "reviewers"
   | "factory-assignments"
   | "manager-applications";
-const organizations = [
-  "BGMEA",
-  "BKMEA",
-  "Department of Inspection for Factories and Establishments (DIFE)",
-  "RMG Sustainability Council (RSC)",
-];
-
 function status(value: string) {
   return value.replaceAll("_", " ");
 }
@@ -91,7 +85,6 @@ export function AdminWorkspace({
   const [add, setAdd] = useState(false);
   const [assigneeId, setAssigneeId] = useState("");
   const [assignmentSaved, setAssignmentSaved] = useState(false);
-  const [organization, setOrganization] = useState("");
   const [selected, setSelected] = useState("");
   const [caseId, setCaseId] = useState("");
   const details = useQuery({
@@ -122,7 +115,9 @@ export function AdminWorkspace({
     enabled: view === "manager-applications",
   });
   const assignees =
-    reviewers.data?.filter((row) => row.status !== "deactivated") || [];
+    reviewers.data?.filter((row) =>
+      ["active", "pending"].includes(row.status),
+    ) || [];
   const assignee = assignees.find((row) => row.id === assigneeId);
   const names = new Map(factories.data?.map((f) => [f.id, f.name]));
 
@@ -145,19 +140,26 @@ export function AdminWorkspace({
         "/v1/admin/reviewers",
         token,
         "POST",
-        {
-          full_name: form.get("full_name"),
-          email: form.get("email"),
-          organization:
-            (organization === "custom"
-              ? String(form.get("custom_organization")).trim()
-              : organization) || null,
-          role_type: form.get("role_type") || null,
-        },
+        reviewerDetails(form),
       );
       setAdd(false);
       setCopied(false);
       setInvite(response.invite_url);
+      await reviewers.refetch();
+    });
+  }
+
+  async function decideRequest(id: string, choice: "approve" | "reject") {
+    await perform(async () => {
+      const next = await api<{ invite_url?: string }>(
+        `/v1/admin/reviewer-requests/${id}/${choice}`,
+        token,
+        "POST",
+      );
+      if (next.invite_url) {
+        setCopied(false);
+        setInvite(next.invite_url);
+      }
       await reviewers.refetch();
     });
   }
@@ -259,7 +261,6 @@ export function AdminWorkspace({
                 className="primary"
                 onClick={() => {
                   setError("");
-                  setOrganization("");
                   setAdd(true);
                 }}
               >
@@ -270,24 +271,48 @@ export function AdminWorkspace({
             {reviewers.error && <ErrorNote text={message(reviewers.error)} />}
             {reviewers.data?.map((row) => (
               <div className="admin-row" key={row.id}>
-                <div>
+                <div className="reviewer-profile">
                   <strong>{row.full_name}</strong>
-                  <small>
-                    {row.email} · {row.role_type || "Role type unspecified"}
-                    {row.organization && ` · ${row.organization}`}
-                  </small>
-                  <small>
-                    {dateText(row.created_at)} ·{" "}
-                    {row.reviewer_factories
-                      .map((f) => names.get(f.factory_id))
-                      .filter(Boolean)
-                      .join(", ") || "No factory assignments"}
-                  </small>
+                  <dl className="reviewer-fields">
+                    <dt>Email</dt>
+                    <dd>{row.email}</dd>
+                    <dt>Role type</dt>
+                    <dd>{row.role_type || "Unspecified"}</dd>
+                    <dt>Organization</dt>
+                    <dd>{row.organization || "Unspecified"}</dd>
+                    <dt>Created</dt>
+                    <dd>{dateText(row.created_at)}</dd>
+                    <dt>Factories</dt>
+                    <dd>
+                      {row.reviewer_factories
+                        .map((f) => names.get(f.factory_id))
+                        .filter(Boolean)
+                        .join(", ") || "No factory assignments"}
+                    </dd>
+                  </dl>
                 </div>
                 <div className="inline-actions">
                   <Tag tone={row.status === "active" ? "green" : "amber"}>
-                    {status(row.status)}
+                    {row.status === "pending_approval"
+                      ? "Access requested"
+                      : status(row.status)}
                   </Tag>
+                  {row.status === "pending_approval" && (
+                    <>
+                      <button
+                        disabled={busy}
+                        onClick={() => void decideRequest(row.id, "approve")}
+                      >
+                        Approve and create invite
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => void decideRequest(row.id, "reject")}
+                      >
+                        Reject request
+                      </button>
+                    </>
+                  )}
                   {row.status === "pending" && (
                     <button
                       disabled={busy}
@@ -306,7 +331,7 @@ export function AdminWorkspace({
                       Resend invite
                     </button>
                   )}
-                  {row.status !== "deactivated" && (
+                  {["pending", "active"].includes(row.status) && (
                     <>
                       <button
                         onClick={() => {
@@ -501,53 +526,8 @@ export function AdminWorkspace({
       )}
       {add && (
         <Modal title="Add reviewer" close={() => setAdd(false)}>
-          <form className="admin-form" onSubmit={addReviewer}>
-            <label>
-              Full name
-              <input name="full_name" maxLength={160} required />
-            </label>
-            <label>
-              Email
-              <input name="email" type="email" maxLength={254} required />
-            </label>
-            <label>
-              <span>Organization (optional)</span>
-              <select
-                aria-label="Organization (optional)"
-                value={organization}
-                onChange={(event) => setOrganization(event.target.value)}
-              >
-                <option value="">Choose an organization</option>
-                {organizations.map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-                <option value="custom">Enter another organization</option>
-              </select>
-            </label>
-            {organization === "custom" && (
-              <label>
-                Organization name
-                <input
-                  name="custom_organization"
-                  maxLength={160}
-                  required
-                  pattern={String.raw`.*\S.*`}
-                />
-              </label>
-            )}
-            <label>
-              Role type (optional)
-              <select name="role_type">
-                <option value="">Choose role type</option>
-                {[
-                  "Compliance Officer",
-                  "Independent Auditor",
-                  "Buyer Sustainability Team",
-                ].map((type) => (
-                  <option key={type}>{type}</option>
-                ))}
-              </select>
-            </label>
+          <form className="admin-form" method="post" onSubmit={addReviewer}>
+            <ReviewerFields />
             {error && <ErrorNote text={error} />}
             <button className="primary" disabled={busy}>
               Create reviewer

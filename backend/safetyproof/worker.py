@@ -15,13 +15,15 @@ from .verify import run_verification
 log = logging.getLogger(__name__)
 
 
-async def isolated_pdf(data, vid, tessdata):
+async def isolated_pdf(data, vid, tessdata, offset, batch_size):
     proc = await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
         "safetyproof.pdf",
         vid,
         tessdata,
+        str(offset),
+        str(batch_size),
         env={
             **os.environ,
             "OMP_THREAD_LIMIT": "1",
@@ -71,8 +73,17 @@ async def process(db, ai, cfg, job):
             v = await db.one("document_versions", job["version_id"])
             await step("progress", {"stage": "Reading PDF and checking scan quality"})
             data = await db.download(v["object_key"])
-            parsed = await isolated_pdf(data, v["id"], cfg.tessdata_prefix)
-            await step("ingested", parsed)
+            offset = job["completed"]
+            while True:
+                parsed = await isolated_pdf(
+                    data, v["id"], cfg.tessdata_prefix, offset, 8
+                )
+                await db.rpc(
+                    "ingest_batch", jid=job["id"], ticket=job["lease"], batch=parsed
+                )
+                offset += len(parsed["pages"])
+                if offset == parsed["total_pages"]:
+                    break
         else:
             run = await db.one("verification_runs", job["run_id"])
             if run["config"] != cfg.provenance():

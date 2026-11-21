@@ -14,7 +14,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AccountProfile"
+                }
               }
             }
           }
@@ -34,7 +36,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Login"
+                "$ref": "#/components/schemas/WorkspaceLogin"
               }
             }
           },
@@ -210,6 +212,58 @@
         }
       }
     },
+    "/v1/reviewer-organizations": {
+      "get": {
+        "summary": "Reviewer Organizations",
+        "operationId": "reviewer_organizations_v1_reviewer_organizations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/signup/reviewer": {
+      "post": {
+        "summary": "Request Reviewer",
+        "operationId": "request_reviewer_v1_signup_reviewer_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/invites/validate": {
       "post": {
         "summary": "Validate",
@@ -340,6 +394,62 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/v1/admin/reviewer-requests/{uid}/{choice}": {
+      "post": {
+        "summary": "Decide Reviewer Request",
+        "operationId": "decide_reviewer_request_v1_admin_reviewer_requests__uid___choice__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Uid"
+            }
+          },
+          {
+            "name": "choice",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "approve",
+                "reject"
+              ],
+              "type": "string",
+              "title": "Choice"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/admin/reviewers/{uid}/resend-invite": {
@@ -1174,6 +1284,35 @@
               "type": "string",
               "format": "uuid",
               "title": "Vid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 20,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
             }
           }
         ],
@@ -2211,6 +2350,83 @@
   },
   "components": {
     "schemas": {
+      "AccountProfile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "role_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "factory_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factory Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "full_name",
+          "email",
+          "role",
+          "organization",
+          "role_type",
+          "status",
+          "created_at",
+          "factory_id"
+        ],
+        "title": "AccountProfile"
+      },
       "Archive": {
         "properties": {
           "archived": {
@@ -2568,28 +2784,6 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
-      "Login": {
-        "properties": {
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "title": "Email"
-          },
-          "password": {
-            "type": "string",
-            "maxLength": 72,
-            "minLength": 1,
-            "title": "Password"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "email",
-          "password"
-        ],
-        "title": "Login"
-      },
       "Manager": {
         "properties": {
           "email": {
@@ -2882,6 +3076,62 @@
         ],
         "title": "Reviewer"
       },
+      "ReviewerRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          },
+          "full_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Full Name"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "role_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "Compliance Officer",
+                  "Independent Auditor",
+                  "Buyer Sustainability Team"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Type"
+          },
+          "website": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Website",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "full_name"
+        ],
+        "title": "ReviewerRequest"
+      },
       "RunInput": {
         "properties": {
           "request_key": {
@@ -2942,6 +3192,7 @@
             "title": "Password"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "token",
@@ -3017,6 +3268,7 @@
             "title": "Token"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "token"
@@ -3201,6 +3453,43 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WorkspaceLogin": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 72,
+            "minLength": 1,
+            "title": "Password"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "factory_manager",
+                  "reviewer"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "WorkspaceLogin"
       }
     },
     "securitySchemes": {

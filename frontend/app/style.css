@@ -237,7 +237,13 @@ button.danger {
   border-radius: 7px;
   white-space: nowrap;
 }
+.account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(30vw, 15rem);
+}
 .online {
+  flex: none;
   height: 7px;
   width: 7px;
   border-radius: 50%;
@@ -1298,10 +1304,91 @@ input[type="checkbox"] {
 .entry-panel a { color: var(--green); text-decoration: underline; }
 .entry-panel form, .admin-form { display: grid; gap: 12px; }
 .entry-panel label, .admin-form label { display: grid; gap: 4px; }
+.email-domain-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.email-domain-suffix { color: var(--muted); font-size: 13px; }
+.password-field {
+  display: grid;
+  gap: 4px;
+}
+.password-control {
+  position: relative;
+}
+.password-control input {
+  padding-inline-end: 47px;
+}
+.password-toggle {
+  position: absolute;
+  inset-block: 1px;
+  inset-inline-end: 1px;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.password-toggle:hover {
+  background: #edf3ee;
+}
 .entry-panel .consent { display: flex; align-items: start; gap: 8px; }
 .entry-panel .consent input { flex: none; margin-top: 3px; }
 .admin-content { width: min(1100px, 100%); margin: auto; padding: 20px; }
 .admin-content .panel + .panel { margin-top: 14px; }
 .admin-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--line); }
 .admin-row small, .admin-row strong { display: block; }
+.reviewer-profile {
+  flex: 1 1 24rem;
+  min-width: 0;
+}
+.reviewer-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin-top: 7px;
+  font-size: 13px;
+}
+.reviewer-fields dt {
+  color: var(--muted);
+  font-weight: 650;
+}
+.reviewer-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.account-details {
+  margin: 0 0 16px;
+  gap: 8px 16px;
+}
+.account-status { text-transform: capitalize; }
 .admin-card-preview { width: 100%; max-height: 500px; object-fit: contain; }
+
+.account-menu {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f3f6f2;
+}
+.entry-panel .account-menu a {
+  display: grid;
+  place-items: center;
+  padding: 8px 5px;
+  border-radius: 6px;
+  text-align: center;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 650;
+}
+.entry-panel .account-menu a:hover {
+  background: #e6eee7;
+}
+.entry-panel .account-menu a[aria-current="page"] {
+  color: white;
+  background: var(--green);
+}

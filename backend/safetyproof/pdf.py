@@ -10,8 +10,6 @@ from pathlib import Path
 from uuid import UUID, uuid5
 from .config import PARSER
 
-MAX_BYTES = 10 * 1024 * 1024
-
 
 def chunks_for(page, version_id):
     """Group adjacent whole lines. A chunk never crosses a page."""
@@ -100,21 +98,28 @@ def scan_lines(pdf, index, lang_path):
     return lines, ("readable" if conf and sum(conf) / len(conf) >= 60 else "uncertain")
 
 
-def parse_pdf(data, version_id, tessdata):
+def parse_pdf(data, version_id, tessdata, offset=0, batch_size=None):
     import pdfplumber
     import pypdfium2 as pdfium
 
-    if len(data) > MAX_BYTES or b"%PDF-" not in data[:1024]:
-        raise ValueError("Upload a PDF within the 10 MB limit.")
+    if b"%PDF-" not in data[:1024]:
+        raise ValueError("Upload a valid PDF.")
     pages, chunks = [], []
     with pdfplumber.open(io.BytesIO(data)) as doc:
         if doc.doc.encryption:
             raise ValueError("Password-protected PDFs are unsupported.")
         pdf = pdfium.PdfDocument(data)
         try:
-            if not 1 <= len(pdf) <= 20:
-                raise ValueError("A PDF must contain between 1 and 20 pages.")
-            for i, page in enumerate(doc.pages):
+            total_pages = len(pdf)
+            if not 0 <= offset < total_pages:
+                raise ValueError("The PDF has no pages at the requested offset.")
+            end = (
+                total_pages
+                if batch_size is None
+                else min(total_pages, offset + batch_size)
+            )
+            for i in range(offset, end):
+                page = doc.pages[i]
                 method, quality = "native", "readable"
                 lines = native_lines(page)
                 text = " ".join(t for t, _ in lines)
@@ -139,7 +144,7 @@ def parse_pdf(data, version_id, tessdata):
                             "English and Bangla OCR language data are required. Install them and retry."
                         )
                     lines, quality = scan_lines(pdf, i, tessdata)
-                blocks, parts, offset = [], [], 0
+                blocks, parts, text_offset = [], [], 0
                 for t, box in lines:
                     t = t.strip()
                     if not t:
@@ -147,13 +152,13 @@ def parse_pdf(data, version_id, tessdata):
                     parts.append(t)
                     blocks.append(
                         {
-                            "start": offset,
-                            "end": offset + len(t),
+                            "start": text_offset,
+                            "end": text_offset + len(t),
                             "box": [round(max(0, min(1, x)), 5) for x in box],
                         }
                     )
-                    offset += len(t) + 1
-                if offset > 100_000:
+                    text_offset += len(t) + 1
+                if text_offset > 100_000:
                     raise ValueError("Page exceeds the text processing limit.")
                 item = {
                     "id": str(uuid5(UUID(version_id), f"{PARSER}/page/{i + 1}")),
@@ -170,6 +175,8 @@ def parse_pdf(data, version_id, tessdata):
         finally:
             pdf.close()
     return {
+        "offset": offset,
+        "total_pages": total_pages,
         "pages": pages,
         "chunks": chunks,
         "readable_pages": sum(p["quality"] == "readable" for p in pages),
@@ -185,7 +192,11 @@ if __name__ == "__main__":
     resource.setrlimit(resource.RLIMIT_AS, (410 * 1024**2, 410 * 1024**2))
     try:
         result = parse_pdf(
-            sys.stdin.buffer.read(MAX_BYTES + 1), sys.argv[1], sys.argv[2]
+            sys.stdin.buffer.read(),
+            sys.argv[1],
+            sys.argv[2],
+            int(sys.argv[3]) if len(sys.argv) > 3 else 0,
+            int(sys.argv[4]) if len(sys.argv) > 4 else None,
         )
         sys.stdout.write(json.dumps(result, ensure_ascii=False))
     except Exception as exc:

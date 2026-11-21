@@ -11,7 +11,7 @@ import pytest
 from PIL import Image
 
 from safetyproof import main
-from safetyproof.accounts import CARD_BUCKET
+from safetyproof.accounts import CARD_BUCKET, provision
 from safetyproof.config import ROOT
 from safetyproof.platform import Platform
 
@@ -159,6 +159,7 @@ async def test_account_onboarding(monkeypatch):
                     "email": reviewer_email,
                     "full_name": "Fictional Reviewer",
                     "organization": "Fictional Dhaka Auditors",
+                    "role_type": "Independent Auditor",
                 },
             )
             uid = created_response.json()["id"]
@@ -201,7 +202,10 @@ async def test_account_onboarding(monkeypatch):
                     "POST", f"/admin/reviewers/{uid}/resend-invite", headers=admin
                 )
             )
-            await call("POST", "/invites/validate", json={"token": current_token})
+            validated_invite = await call(
+                "POST", "/invites/validate", json={"token": current_token}
+            )
+            assert validated_invite.json() == {"valid": True, "email": reviewer_email}
             first_response, second_response = await asyncio.gather(
                 *[
                     api.post(
@@ -215,7 +219,117 @@ async def test_account_onboarding(monkeypatch):
                 [first_response.status_code, second_response.status_code]
             ) == [200, 400]
             reviewer = headers(await login(reviewer_email))
+            own_profile = (await call("GET", "/me", headers=reviewer)).json()
+            assert own_profile.pop("created_at")
+            assert own_profile == {
+                "id": uid,
+                "email": reviewer_email,
+                "full_name": "Fictional Reviewer",
+                "organization": "Fictional Dhaka Auditors",
+                "role_type": "Independent Auditor",
+                "role": "reviewer",
+                "status": "active",
+                "factory_id": None,
+            }
             await call("GET", "/admin/reviewers", 403, headers=reviewer)
+            organizations = (await call("GET", "/reviewer-organizations")).json()
+            assert all(
+                entry["email_domain"].endswith(".test") for entry in organizations
+            )
+            organization = organizations[0]
+            request_body = {
+                "email": f"request_{suffix}@{organization['email_domain']}",
+                "full_name": "Fictional Applicant",
+                "organization": organization["name"],
+            }
+            invalid_domain = {**request_body, "email": f"request-{suffix}@other.test"}
+            for path in ("/admin/reviewers", "/signup/reviewer"):
+                mismatch = await call(
+                    "POST", path, 422, headers=admin, json=invalid_domain
+                )
+                assert organization["email_domain"] in mismatch.json()["detail"]
+            await call(
+                "POST",
+                "/signup/reviewer",
+                422,
+                json={
+                    **request_body,
+                    "email": request_body["email"].replace("_", "+", 1),
+                },
+            )
+            await call("POST", "/signup/reviewer", 201, json=request_body)
+            requested = await profile(request_body["email"])
+            created.append(requested["id"])
+            assert requested["status"] == "pending_approval"
+            await call("POST", "/signup/reviewer", 409, json=request_body)
+            await login(request_body["email"], status=401)
+            approval_path = f"/admin/reviewer-requests/{requested['id']}/approve"
+            await call("POST", approval_path, 403, headers=reviewer)
+            approval = await call("POST", approval_path, headers=admin)
+            await call("POST", approval_path, 409, headers=admin)
+            setup = {"token": token(approval), "password": secret}
+            identity = await call(
+                "POST", "/invites/validate", json={"token": setup["token"]}
+            )
+            assert identity.json()["email"] == request_body["email"]
+            await call(
+                "POST",
+                "/invites/set-password",
+                422,
+                json={**setup, "email": reviewer_email},
+            )
+            await call("POST", "/invites/set-password", json=setup)
+            await login(request_body["email"])
+
+            rejected_email = f"denied-{suffix}@other.test"
+            await call(
+                "POST",
+                "/signup/reviewer",
+                201,
+                json={
+                    **request_body,
+                    "organization": "Fictional Inspection Group",
+                    "email": rejected_email,
+                },
+            )
+            rejected = await profile(rejected_email)
+            created.append(rejected["id"])
+            await call(
+                "POST",
+                f"/admin/reviewer-requests/{rejected['id']}/reject",
+                headers=admin,
+            )
+            assert (await profile(rejected_email))["status"] == "rejected"
+            await login(rejected_email, status=401)
+            await call(
+                "POST",
+                "/login",
+                403,
+                json={
+                    "email": reviewer_email,
+                    "password": secret,
+                    "workspace": "factory_manager",
+                },
+            )
+            colleague_email = f"colleague-{suffix}@safetyproof.test"
+            colleague_id = await provision(
+                db,
+                colleague_email,
+                {
+                    "full_name": "Fictional Colleague",
+                    "role": "reviewer",
+                    "status": "active",
+                },
+                secret,
+            )
+            created.append(colleague_id)
+            colleague = headers(await login(colleague_email))
+            await call(
+                "POST",
+                f"/admin/reviewers/{colleague_id}/factories",
+                headers=admin,
+                json={"factory_ids": [first]},
+            )
             for item in factories[:2]:
                 case = (
                     await call(
@@ -227,6 +341,15 @@ async def test_account_onboarding(monkeypatch):
                     )
                 ).json()
                 cases.append(case["id"])
+            await call("GET", f"/cases/{cases[0]}", 404, headers=colleague)
+            await call(
+                "POST",
+                f"/admin/reviewers/{colleague_id}/factories",
+                headers=admin,
+                json={"factory_ids": [first, second]},
+            )
+            assert (await call("GET", "/cases", headers=colleague)).json() == []
+            await call("GET", f"/cases/{cases[1]}", 404, headers=colleague)
             await call(
                 "POST",
                 f"/cases/{cases[0]}/runs",

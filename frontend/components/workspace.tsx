@@ -24,7 +24,6 @@ import {
   LogOut,
   Menu,
   Plus,
-  ScanLine,
   ShieldCheck,
 } from "lucide-react";
 import {
@@ -37,7 +36,7 @@ import {
   message,
   roles,
 } from "@/lib/api";
-import { Busy, DocIcon, ErrorNote, Modal, Tag } from "./ui";
+import { Busy, DocIcon, ErrorNote, Modal, PasswordField, Tag } from "./ui";
 import { Viewer, Preview } from "./viewer";
 import { Documents } from "./documents";
 import { Analysis } from "./analysis";
@@ -46,8 +45,10 @@ import { RunHistory } from "./run-history";
 import { CapReview } from "./cap-review";
 import { AdminWorkspace } from "./admin-workspace";
 import type { Factory } from "./onboarding";
+import { AccountMenu } from "./account-menu";
 import { CorrectiveWork } from "./corrective-work";
 import { sampleCatalog } from "@/lib/samples";
+import type { components } from "@/lib/schema";
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -98,12 +99,15 @@ function App() {
   const identity = useQuery({
     queryKey: ["identity", token],
     queryFn: () =>
-      api<{ role: string; factory_id: string | null }>("/v1/me", token),
+      api<components["schemas"]["AccountProfile"]>("/v1/me", token),
     enabled: !!token,
     retry: false,
     refetchOnWindowFocus: true,
   });
-  const role = identity.data?.role;
+  const profile = identity.data;
+  const role = profile?.role;
+  const accountName =
+    profile?.full_name?.trim() || session?.user.email || "Account";
   const isManager = role === "factory_manager";
   const assigned = useQuery({
     queryKey: ["assigned-factories", session?.user.id],
@@ -157,14 +161,13 @@ function App() {
   async function refresh() {
     await Promise.all([cases.refetch(), ...(cid ? [dossier.refetch()] : [])]);
   }
-  async function create(data: Record<string, unknown>, demo = false) {
+  async function create(data: Record<string, unknown>) {
     setWorking(true);
     setErr("");
     try {
       const c = await api<Case>("/v1/cases", token, "POST", data);
       go("documents", c.id);
       setDialog(null);
-      if (demo) await api("/v1/cases/" + c.id + "/samples", token, "POST");
       await cache.invalidateQueries({ queryKey: ["cases"] });
       await cache.invalidateQueries({ queryKey: ["case"] });
     } catch (e) {
@@ -198,11 +201,16 @@ function App() {
       </main>
     );
   if (!session || identity.isError) {
+    const signIn =
+      params.get("sign-in") === "factory-manager"
+        ? "factory_manager"
+        : "reviewer";
     return (
       <main className="entry-page">
         <section className="panel entry-panel">
           <h1>Sign in to SafetyProof AI</h1>
-          {params.get("password") === "updated" && (
+          <AccountMenu current={signIn} />
+          {signIn === "reviewer" && params.get("password") === "updated" && (
             <p>Your password is set. Sign in to continue.</p>
           )}
           <Login
@@ -215,8 +223,9 @@ function App() {
                   ? message(config.error)
                   : undefined
             }
+            key={signIn}
+            workspace={signIn}
           />
-          <a href="/signup/factory-manager">Apply as a Factory Manager</a>
         </section>
       </main>
     );
@@ -292,11 +301,9 @@ function App() {
         <div className="side-bottom">
           <div className="side-rule" />
           <button className="user-tile" onClick={() => setDialog("account")}>
-            <span className="avatar">
-              {(session.user.email || "R")[0].toUpperCase()}
-            </span>
+            <span className="avatar">{accountName[0].toUpperCase()}</span>
             <span>
-              <b>{session.user.email?.split("@")[0]}</b>
+              <b title={accountName}>{accountName}</b>
               <small>Account settings</small>
             </span>
             <ChevronRight size={16} />
@@ -320,7 +327,9 @@ function App() {
           </div>
           <button className="top-account" onClick={() => setDialog("account")}>
             <span className="online" />
-            {session.user.email?.split("@")[0]}
+            <span className="account-name" title={accountName}>
+              {accountName}
+            </span>
           </button>
         </header>
         <main className="content">
@@ -548,78 +557,12 @@ function App() {
                   ) : (
                     <p className="empty-text">
                       {isManager
-                        ? "An auditor can share a case with your Factory Manager account."
-                        : "Create your first review case or load the sample documents below."}
+                        ? "Cases created for your factory will appear here."
+                        : "No review cases yet. Use New case to start your first review."}
                     </p>
                   )}
                 </section>
               )}
-              {role === "reviewer" &&
-                assigned.data?.some(
-                  ({ factories }) => factories.name === sample.factory,
-                ) && (
-                  <>
-                    <section className="feature">
-                      <div className="feature-copy">
-                        <span className="feature-label">
-                          <span /> Sample case
-                        </span>
-                        <h2>April safety review</h2>
-                        <p>
-                          Read an inspection report alongside a Bangla incident
-                          register, a fire procedure, and an earlier finding.
-                        </p>
-                        <button
-                          className="feature-cta"
-                          disabled={working}
-                          onClick={() =>
-                            session
-                              ? void create(
-                                  {
-                                    factory: sample.factory,
-                                    title: sample.title,
-                                    programme: sample.programme,
-                                    period_start: sample.period_start,
-                                    period_end: sample.period_end,
-                                  },
-                                  true,
-                                )
-                              : go("library")
-                          }
-                        >
-                          {working
-                            ? "Preparing case…"
-                            : session
-                              ? "Load sample case"
-                              : "Explore sample documents"}{" "}
-                          <ArrowRight size={16} />
-                        </button>
-                      </div>
-                      <div className="paper-art" aria-hidden="true">
-                        <div className="art-sheet rear">
-                          <div className="art-line" />
-                          <small>INSPECTION REPORT</small>
-                          <strong>April review</strong>
-                          <i />
-                          <i />
-                          <i />
-                        </div>
-                        <div className="art-sheet front">
-                          <div className="art-fold" />
-                          <ScanLine size={22} />
-                          <small>INCIDENT REGISTER</small>
-                          <strong lang="bn">ঘটনার বিবরণ</strong>
-                          <span lang="bn">
-                            ১৫ এপ্রিল কাটিং মেশিনে একজন শ্রমিক আহত হন।
-                          </span>
-                          <i />
-                          <i />
-                        </div>
-                      </div>
-                    </section>
-                    <SampleFiles sample={sample} preview={setPreview} compact />
-                  </>
-                )}
             </>
           )}
         </main>
@@ -644,8 +587,45 @@ function App() {
         />
       )}
       {dialog === "account" && (
-        <Modal title="Account" close={() => setDialog(null)}>
-          <p className="muted">{session?.user.email}</p>
+        <Modal title="Account settings" close={() => setDialog(null)}>
+          <dl className="reviewer-fields account-details">
+            <dt>Full name</dt>
+            <dd>{accountName}</dd>
+            <dt>Email</dt>
+            <dd>{profile?.email || session.user.email}</dd>
+            {role === "reviewer" && (
+              <>
+                <dt>Organization</dt>
+                <dd>{profile?.organization || "Not recorded"}</dd>
+                <dt>Reviewer type</dt>
+                <dd>{profile?.role_type || "Not recorded"}</dd>
+                <dt>Assigned factories</dt>
+                <dd>
+                  {assigned.isPending
+                    ? "Loading…"
+                    : assigned.isError
+                      ? "Unavailable"
+                      : assigned.data
+                          ?.map(({ factories }) => factories.name)
+                          .join(", ") || "No factory assignments"}
+                </dd>
+              </>
+            )}
+            {profile?.status && (
+              <>
+                <dt>Account status</dt>
+                <dd className="account-status">
+                  {profile.status.replaceAll("_", " ")}
+                </dd>
+              </>
+            )}
+            {profile?.created_at && (
+              <>
+                <dt>Member since</dt>
+                <dd>{dateText(profile.created_at)}</dd>
+              </>
+            )}
+          </dl>
           <button onClick={signout}>
             <LogOut size={16} />
             Sign out
@@ -716,10 +696,12 @@ function Login({
   auth,
   restoring,
   error,
+  workspace,
 }: {
   auth: SupabaseClient | null;
   restoring: boolean;
   error?: string;
+  workspace: "factory_manager" | "reviewer";
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -736,6 +718,7 @@ function Login({
       }>("/v1/login", undefined, "POST", {
         email: String(form.get("email")).trim(),
         password: String(form.get("password")),
+        workspace,
       });
       const { error } = await auth.auth.setSession(session);
       if (error) throw error;
@@ -746,20 +729,21 @@ function Login({
     }
   }
   return (
-    <form onSubmit={submit}>
-      <label>
+    <form id="sign-in" method="post" autoComplete="on" onSubmit={submit}>
+      {workspace === "reviewer" && (
+        <p className="hint">Administrators sign in here too.</p>
+      )}
+      <label htmlFor="sign-in-email">
         Email
-        <input name="email" type="email" required autoComplete="username" />
-      </label>
-      <label>
-        Password
         <input
-          name="password"
-          type="password"
+          id="sign-in-email"
+          name="email"
+          type="email"
           required
-          autoComplete="current-password"
+          autoComplete="username"
         />
       </label>
+      <PasswordField id="sign-in-password" />
       {(err || error || (!auth && !restoring)) && (
         <ErrorNote
           text={err || error || "Workspace authentication is unavailable."}

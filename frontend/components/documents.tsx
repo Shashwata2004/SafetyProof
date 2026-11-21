@@ -539,10 +539,15 @@ function Inspect({
   close: () => void;
   preview: (p: Preview) => void;
 }) {
+  const [pageOffset, setPageOffset] = useState(0);
+  const pageBatch = 8;
   const q = useQuery({
-    queryKey: ["pages", v.id],
+    queryKey: ["pages", v.id, pageOffset],
     queryFn: () =>
-      api<PageInfo[]>("/v1/document-versions/" + v.id + "/pages", token),
+      api<PageInfo[]>(
+        `/v1/document-versions/${v.id}/pages?offset=${pageOffset}&limit=${pageBatch}`,
+        token,
+      ),
   });
   return (
     <Modal title={title} close={close}>
@@ -557,6 +562,26 @@ function Inspect({
           Open original PDF <ChevronRight size={14} />
         </button>
       </div>
+      {v.page_count > pageBatch && (
+        <div className="inline-actions">
+          <button
+            disabled={pageOffset === 0}
+            onClick={() => setPageOffset(pageOffset - pageBatch)}
+          >
+            Previous pages
+          </button>
+          <span aria-live="polite">
+            Pages {pageOffset + 1}–
+            {Math.min(pageOffset + pageBatch, v.page_count)} of {v.page_count}
+          </span>
+          <button
+            disabled={pageOffset + pageBatch >= v.page_count}
+            onClick={() => setPageOffset(pageOffset + pageBatch)}
+          >
+            Next pages
+          </button>
+        </div>
+      )}
       {q.isLoading ? (
         <Busy />
       ) : q.error ? (
@@ -602,8 +627,6 @@ function Upload({
     setErr("");
     const form = new FormData(e.currentTarget);
     try {
-      if (file.size > 10 * 1024 * 1024)
-        throw new Error("Choose a PDF smaller than 10 MB.");
       setStage("Reserving private upload…");
       const res = await api<components["schemas"]["UploadTicket"]>(
         "/v1/cases/" + d.case.id + "/uploads",
@@ -665,7 +688,7 @@ function Upload({
           <UploadCloud size={25} />
           <strong>{file?.name || "Choose a PDF"}</strong>
           <small>
-            Digital PDF or printed scan · 10 MB and 20 pages maximum
+            Digital PDF or printed scan · Large reports process in batches
           </small>
           <input
             type="file"

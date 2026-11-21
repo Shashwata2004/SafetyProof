@@ -140,6 +140,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reviewer-organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reviewer Organizations */
+        get: operations["reviewer_organizations_v1_reviewer_organizations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/signup/reviewer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Reviewer */
+        post: operations["request_reviewer_v1_signup_reviewer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/invites/validate": {
         parameters: {
             query?: never;
@@ -186,6 +220,23 @@ export interface paths {
         put?: never;
         /** Add Reviewer */
         post: operations["add_reviewer_v1_admin_reviewers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/reviewer-requests/{uid}/{choice}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Reviewer Request */
+        post: operations["decide_reviewer_request_v1_admin_reviewer_requests__uid___choice__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -850,6 +901,33 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountProfile */
+        AccountProfile: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            /** Role */
+            role: string;
+            /** Organization */
+            organization: string | null;
+            /** Role Type */
+            role_type: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Factory Id */
+            factory_id: string | null;
+        };
         /** Archive */
         Archive: {
             /** Archived */
@@ -974,13 +1052,6 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** Login */
-        Login: {
-            /** Email */
-            email: string;
-            /** Password */
-            password: string;
-        };
         /** Manager */
         Manager: {
             /** Email */
@@ -1103,6 +1174,22 @@ export interface components {
             organization?: string | null;
             /** Role Type */
             role_type?: ("Compliance Officer" | "Independent Auditor" | "Buyer Sustainability Team") | null;
+        };
+        /** ReviewerRequest */
+        ReviewerRequest: {
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string;
+            /** Organization */
+            organization?: string | null;
+            /** Role Type */
+            role_type?: ("Compliance Officer" | "Independent Auditor" | "Buyer Sustainability Team") | null;
+            /**
+             * Website
+             * @default
+             */
+            website: string;
         };
         /** RunInput */
         RunInput: {
@@ -1227,6 +1314,15 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** WorkspaceLogin */
+        WorkspaceLogin: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+            /** Workspace */
+            workspace?: ("factory_manager" | "reviewer") | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -1251,7 +1347,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AccountProfile"];
                 };
             };
         };
@@ -1265,7 +1361,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Login"];
+                "application/json": components["schemas"]["WorkspaceLogin"];
             };
         };
         responses: {
@@ -1433,6 +1529,59 @@ export interface operations {
             };
         };
     };
+    reviewer_organizations_v1_reviewer_organizations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    request_reviewer_v1_signup_reviewer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     validate_v1_invites_validate_post: {
         parameters: {
             query?: never;
@@ -1534,6 +1683,38 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_reviewer_request_v1_admin_reviewer_requests__uid___choice__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+                choice: "approve" | "reject";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2158,7 +2339,10 @@ export interface operations {
     };
     pages_v1_document_versions__vid__pages_get: {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number;
+                limit?: number | null;
+            };
             header?: never;
             path: {
                 vid: string;

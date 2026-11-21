@@ -19,7 +19,7 @@ enabled = false
 enabled = false
 [storage]
 enabled = true
-file_size_limit = "10MiB"
+file_size_limit = "50MiB"
 [auth]
 enabled = true
 site_url = "http://localhost:3000"

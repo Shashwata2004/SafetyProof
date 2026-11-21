@@ -2,12 +2,16 @@
 
 import asyncio
 import json
+import secrets
 from pathlib import Path
 from uuid import uuid4
 
 import httpx
 import pytest
+import pytest_asyncio
 from safetyproof import main
+from safetyproof.accounts import provision
+from safetyproof.platform import Platform
 from safetyproof.models import CapActionList, SecondOpinion, TargetList, Verdict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -98,8 +102,28 @@ class ScriptedInference:
         raise AssertionError(schema)
 
 
+@pytest_asyncio.fixture
+async def test_viewer():
+    if not main.cfg.supabase_anon_key or "127.0.0.1" not in main.cfg.supabase_url:
+        pytest.skip("Configure the local Supabase stack first.")
+    email = f"test-viewer-{uuid4().hex[:12]}@safetyproof.test"
+    password = secrets.token_urlsafe(18)
+    async with httpx.AsyncClient(timeout=30) as remote:
+        db = Platform(main.cfg, remote)
+        uid = await provision(
+            db,
+            email,
+            {"role": "viewer", "status": "active", "full_name": "Test Viewer"},
+            password,
+        )
+        try:
+            yield {"email": email, "password": password}
+        finally:
+            await db.call("DELETE", "/auth/v1/admin/users/" + uid, admin=True)
+
+
 @pytest.mark.asyncio
-async def test_case_review_and_permissions(monkeypatch):
+async def test_case_review_and_permissions(monkeypatch, test_viewer):
     credentials = ROOT / ".local/accounts.json"
     if not credentials.exists() or not main.cfg.supabase_anon_key:
         pytest.skip("Run scripts/local_setup.py against local Supabase first")
@@ -109,7 +133,7 @@ async def test_case_review_and_permissions(monkeypatch):
         main.cfg.model_copy(update={"gemini_api_key": "test-only-provider-stub"}),
     )
     monkeypatch.setattr(main, "Gemini", ScriptedInference)
-    accounts = json.loads(credentials.read_text())
+    accounts = {**json.loads(credentials.read_text()), "viewer": test_viewer}
     async with (
         main.lifespan(main.app),
         httpx.AsyncClient(

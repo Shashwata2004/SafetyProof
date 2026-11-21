@@ -2,38 +2,20 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { api, apiBase, message } from "@/lib/api";
-import { ErrorNote } from "./ui";
+import { ErrorNote, PasswordField } from "./ui";
+import { AccountMenu } from "./account-menu";
+import { ReviewerFields, reviewerDetails } from "./reviewer-fields";
 
 export type Factory = { id: string; name: string; address?: string };
 
 function PasswordFields() {
   return (
     <>
-      <label>
-        Password
-        <input
-          name="password"
-          type="password"
-          minLength={8}
-          maxLength={72}
-          required
-          autoComplete="new-password"
-        />
-      </label>
+      <PasswordField newPassword />
       <p className="hint">
         Use at least 8 characters. A longer, unique passphrase is stronger.
       </p>
-      <label>
-        Confirm password
-        <input
-          name="confirm"
-          type="password"
-          minLength={8}
-          maxLength={72}
-          required
-          autoComplete="new-password"
-        />
-      </label>
+      <PasswordField label="Confirm password" name="confirm" newPassword />
     </>
   );
 }
@@ -50,6 +32,7 @@ function passwords(form: FormData) {
 export function SetPassword() {
   const started = useRef(false);
   const [token, setToken] = useState("");
+  const [email, setEmail] = useState("");
   const [status, setStatus] = useState("checking");
   const [error, setError] = useState("");
   useEffect(() => {
@@ -66,8 +49,13 @@ export function SetPassword() {
       return;
     }
     setToken(value);
-    void api("/v1/invites/validate", undefined, "POST", { token: value })
-      .then(() => setStatus("ready"))
+    void api<{ email: string }>("/v1/invites/validate", undefined, "POST", {
+      token: value,
+    })
+      .then(({ email }) => {
+        setEmail(email);
+        setStatus("ready");
+      })
       .catch((error) => {
         setStatus("invalid");
         setError(message(error));
@@ -96,7 +84,17 @@ export function SetPassword() {
         <h1>Set your reviewer password</h1>
         {status === "checking" && <p>Checking your invitation…</p>}
         {["ready", "saving"].includes(status) && (
-          <form onSubmit={submit}>
+          <form method="post" onSubmit={submit}>
+            <label>
+              Email
+              <input
+                name="email"
+                type="email"
+                autoComplete="username"
+                value={email}
+                readOnly
+              />
+            </label>
             <PasswordFields />
             <button className="primary" disabled={status === "saving"}>
               Set password
@@ -105,6 +103,54 @@ export function SetPassword() {
         )}
         {error && <ErrorNote text={error} />}
         <a href="/">Back to sign in</a>
+      </section>
+    </main>
+  );
+}
+
+export function RequestReviewerAccess() {
+  const [submitted, setSubmitted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setBusy(true);
+    setError("");
+    try {
+      await api("/v1/signup/reviewer", undefined, "POST", {
+        ...reviewerDetails(form),
+        website: form.get("website"),
+      });
+      setSubmitted(true);
+    } catch (error) {
+      setError(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="entry-page">
+      <section className="panel entry-panel">
+        <h1>Request reviewer access</h1>
+        <AccountMenu current="reviewer-request" />
+        {submitted ? (
+          <p role="status">
+            Your request is awaiting admin approval. If approved, ask the admin
+            for your one-time password setup link.
+          </p>
+        ) : (
+          <form method="post" onSubmit={submit}>
+            <ReviewerFields />
+            <input name="website" hidden tabIndex={-1} autoComplete="off" />
+            {error && <ErrorNote text={error} />}
+            <button className="primary" disabled={busy}>
+              {busy ? "Submitting…" : "Send access request"}
+            </button>
+          </form>
+        )}
       </section>
     </main>
   );
@@ -203,6 +249,7 @@ export function ManagerSignup() {
     <main className="entry-page">
       <section className="panel entry-panel">
         <h1>Apply as a Factory Manager</h1>
+        <AccountMenu current="signup" />
         <p>Choose your factory and submit your office ID for admin approval.</p>
         {factories?.length === 0 && (
           <p>No factories available yet. Please contact the admin.</p>
@@ -224,7 +271,7 @@ export function ManagerSignup() {
               type="email"
               required
               maxLength={254}
-              autoComplete="email"
+              autoComplete="username"
             />
           </label>
           <label>
@@ -303,7 +350,6 @@ export function ManagerSignup() {
             {busy ? "Submitting…" : "Submit application"}
           </button>
         </form>
-        <a href="/">Back to sign in</a>
       </section>
     </main>
   );

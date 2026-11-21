@@ -17,6 +17,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .platform import PlatformError
 
 EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
+REVIEWER_USERNAME = re.compile(r"[a-zA-Z0-9._-]+")
+ORGANIZATIONS = (
+    {"name": "BGMEA", "email_domain": "bgmea-demo.test"},
+    {"name": "BKMEA", "email_domain": "bkmea-demo.test"},
+    {
+        "name": "Department of Inspection for Factories and Establishments (DIFE)",
+        "email_domain": "dife-demo.test",
+    },
+    {"name": "RMG Sustainability Council (RSC)", "email_domain": "rsc-demo.test"},
+)
 INVALID_INVITE = (
     "Invite invalid, expired or already used. Ask the admin for a new link."
 )
@@ -46,10 +56,30 @@ class Login(Identity):
     password: str = Field(min_length=1, max_length=72, repr=False)
 
 
+class WorkspaceLogin(Login):
+    workspace: Literal["factory_manager", "reviewer"] | None = None
+
+
 class Reviewer(Identity):
     full_name: str = Field(min_length=1, max_length=160)
     organization: str | None = Field(default=None, max_length=160)
     role_type: ROLE_TYPES | None = None
+
+
+class ReviewerRequest(Reviewer):
+    website: str = Field(default="", max_length=200)
+
+
+class AccountProfile(BaseModel):
+    id: UUID
+    full_name: str
+    email: str
+    role: str
+    organization: str | None
+    role_type: str | None
+    status: str
+    created_at: datetime
+    factory_id: UUID | None
 
 
 class Assignments(BaseModel):
@@ -69,6 +99,7 @@ class Manager(Login):
 
 
 class Token(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     token: str = Field(min_length=1, max_length=200, repr=False)
 
 
@@ -165,6 +196,33 @@ def require_name(value):
     return value.strip()
 
 
+def reviewer_profile(body: Reviewer, status: str):
+    organization = (body.organization or "").strip()
+    if not organization:
+        raise HTTPException(422, "Select an organization or enter its name.")
+    for entry in ORGANIZATIONS:
+        if organization.casefold() == entry["name"].casefold():
+            organization = entry["name"]
+            username, _, domain = body.email.rpartition("@")
+            if domain != entry["email_domain"]:
+                raise HTTPException(
+                    422, f"Use an email ending in @{entry['email_domain']}."
+                )
+            if not REVIEWER_USERNAME.fullmatch(username):
+                raise HTTPException(
+                    422,
+                    "Use only letters, numbers, dots, hyphens or underscores before @.",
+                )
+            break
+    return {
+        "role": "reviewer",
+        "status": status,
+        "full_name": require_name(body.full_name),
+        "organization": organization,
+        "role_type": body.role_type,
+    }
+
+
 def card_type(data):
     if not data or len(data) > CARD_LIMIT:
         raise HTTPException(413, "Upload an office ID card up to 5 MB.")
@@ -231,21 +289,28 @@ def account_router(user, db_dep):
             raise HTTPException(403, "Administrator access required.")
         return u
 
-    async def invite(db, uid):
-        raw = secrets.token_urlsafe(32)
-        await db.rpc("invite_issue", uid=str(uid), digest=digest(raw))
+    def invite_response(db, raw):
         app_url = db.settings.app_url.rstrip("/")
         return {
             "invite_url": app_url + "/set-password#" + urlencode({"token": raw}),
             "expires_in_hours": 48,
         }
 
+    async def invite(db, uid):
+        raw = secrets.token_urlsafe(32)
+        await db.rpc("invite_issue", uid=str(uid), digest=digest(raw))
+        return invite_response(db, raw)
+
     @router.get("/me")
-    async def me(u=Depends(user)):
-        return {"id": u.id, "role": u.role, "factory_id": u.factory_id}
+    async def me(u=Depends(user), db=Depends(db_dep)) -> AccountProfile:
+        return await db.one(
+            "account_profiles",
+            u.id,
+            fields="id,full_name,email,role,organization,role_type,status,created_at,factory_id",
+        )
 
     @router.post("/login")
-    async def login(body: Login, request: Request, db=Depends(db_dep)):
+    async def login(body: WorkspaceLogin, request: Request, db=Depends(db_dep)):
         await rate(db, request, "login", 60, body.email)
         failure = HTTPException(401, "Email or password is incorrect.")
         try:
@@ -281,11 +346,15 @@ def account_router(user, db_dep):
             ) from None
         profiles = await db.rows(
             "account_profiles",
-            fields="status",
+            fields="status,role",
             filters={"id": "eq." + session["user"]["id"]},
         )
         if not profiles or profiles[0]["status"] != "active":
             raise failure
+        if body.workspace is not None:
+            manager = profiles[0]["role"] == "factory_manager"
+            if manager != (body.workspace == "factory_manager"):
+                raise HTTPException(403, "Choose the sign-in option for your account.")
         return {key: session[key] for key in ("access_token", "refresh_token")}
 
     @router.get("/factories")
@@ -438,21 +507,37 @@ def account_router(user, db_dep):
             raise
         return {"status": "pending_approval"}
 
+    @router.get("/reviewer-organizations")
+    async def reviewer_organizations():
+        return ORGANIZATIONS
+
+    @router.post("/signup/reviewer", status_code=201)
+    async def request_reviewer(
+        body: ReviewerRequest, request: Request, db=Depends(db_dep)
+    ):
+        await rate(db, request, "reviewer-request", 20, body.email)
+        if body.website:
+            raise HTTPException(422, "Unable to submit the request.")
+        profile = reviewer_profile(body, "pending_approval")
+        await provision(db, body.email, profile)
+        return {"status": "pending_approval"}
+
     @router.post("/invites/validate")
     async def validate(body: Token, request: Request, db=Depends(db_dep)):
         await rate(db, request, "invite-validate", 50)
         rows = await db.rows(
             "reviewer_invites",
-            fields="reviewer_id",
+            fields="account_profiles!inner(email)",
             filters={
                 "token_hash": "eq." + digest(body.token),
                 "used_at": "is.null",
                 "expires_at": "gt." + datetime.now(UTC).isoformat(),
+                "account_profiles.status": "eq.pending",
             },
         )
         if not rows:
             raise HTTPException(400, INVALID_INVITE)
-        return {"valid": True}
+        return {"valid": True, "email": rows[0]["account_profiles"]["email"]}
 
     @router.post("/invites/set-password")
     async def set_password(body: SetPassword, request: Request, db=Depends(db_dep)):
@@ -474,18 +559,25 @@ def account_router(user, db_dep):
 
     @router.post("/admin/reviewers", status_code=201)
     async def add_reviewer(body: Reviewer, u=Depends(admin), db=Depends(db_dep)):
-        uid = await provision(
-            db,
-            body.email,
-            {
-                "role": "reviewer",
-                "status": "pending",
-                "full_name": require_name(body.full_name),
-                "organization": body.organization,
-                "role_type": body.role_type,
-            },
-        )
+        uid = await provision(db, body.email, reviewer_profile(body, "pending"))
         return {"id": uid, **await invite(db, uid)}
+
+    @router.post("/admin/reviewer-requests/{uid}/{choice}")
+    async def decide_reviewer_request(
+        uid: UUID,
+        choice: Literal["approve", "reject"],
+        u=Depends(admin),
+        db=Depends(db_dep),
+    ):
+        raw = secrets.token_urlsafe(32) if choice == "approve" else None
+        await db.rpc(
+            "reviewer_request_decide",
+            actor_id=u.id,
+            uid=str(uid),
+            choice=choice,
+            token_hash=digest(raw) if raw else None,
+        )
+        return invite_response(db, raw) if raw else {"status": "rejected"}
 
     @router.post("/admin/reviewers/{uid}/resend-invite")
     async def resend(uid: UUID, request: Request, u=Depends(admin), db=Depends(db_dep)):
