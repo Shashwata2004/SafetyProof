@@ -1,4 +1,5 @@
 export type ZoneId =
+  | "storage"
   | "cutting"
   | "sewing"
   | "finishing"
@@ -20,7 +21,21 @@ export const factoryZones: Array<{
   accent: string;
   evidence: number;
   openFlags: number;
+  summary: string;
+  equipment: string[];
 }> = [
+  {
+    id: "storage",
+    label: "Fabric Storage",
+    shortLabel: "Storage",
+    position: [-5.25, 0.4, 2.8],
+    camera: [-1.8, 6.8, 11.6],
+    accent: "#38bdf8",
+    evidence: 2,
+    openFlags: 0,
+    summary: "Illustrative intake and racking area for traceable fabric-roll handling.",
+    equipment: ["Storage racks", "Fabric rolls", "Intake pallet"],
+  },
   {
     id: "cutting",
     label: "Fabric Cutting",
@@ -30,6 +45,8 @@ export const factoryZones: Array<{
     accent: "#22d3ee",
     evidence: 4,
     openFlags: 1,
+    summary: "Layered fabric preparation with a demo cutting workstation and operator lane.",
+    equipment: ["Cutting table", "Fabric layers", "Cutter head"],
   },
   {
     id: "sewing",
@@ -40,6 +57,8 @@ export const factoryZones: Array<{
     accent: "#34d399",
     evidence: 6,
     openFlags: 1,
+    summary: "Two-row production line showing machine spacing, seating, and thread stations.",
+    equipment: ["6 machines", "Operator chairs", "Thread spools"],
   },
   {
     id: "finishing",
@@ -50,26 +69,32 @@ export const factoryZones: Array<{
     accent: "#a78bfa",
     evidence: 3,
     openFlags: 0,
+    summary: "Illustrative pressing and garment-finishing station with controlled work space.",
+    equipment: ["Press table", "Steam unit", "Finishing tools"],
   },
   {
     id: "quality",
     label: "Quality Check",
     shortLabel: "Quality",
-    position: [3.9, 0.4, 2.4],
+    position: [4.65, 0.4, 2.45],
     camera: [7.6, 6.4, 9.7],
     accent: "#fbbf24",
     evidence: 3,
     openFlags: 1,
+    summary: "Inspection surface and task lighting for sample-based quality review.",
+    equipment: ["Inspection table", "Task light", "Sample display"],
   },
   {
     id: "packing",
     label: "Packing & Dispatch",
     shortLabel: "Packing",
-    position: [-4.5, 0.4, 3.1],
-    camera: [-1.4, 6.3, 11.2],
+    position: [0.35, 0.4, 3.15],
+    camera: [4.7, 6.2, 11.4],
     accent: "#fb7185",
     evidence: 2,
     openFlags: 1,
+    summary: "Organized demonstration area for folding, boxing, and dispatch preparation.",
+    equipment: ["Packing table", "Cartons", "Dispatch pallet"],
   },
 ];
 
@@ -78,15 +103,21 @@ export const evidenceCategories: Array<{
   value: number;
   color: string;
 }> = [
-  { label: "Supported", value: 11, color: "#34d399" },
+  { label: "Supported", value: 12, color: "#34d399" },
   { label: "Unresolved", value: 3, color: "#fbbf24" },
   { label: "Contradictory", value: 1, color: "#fb7185" },
-  { label: "Insufficient Evidence", value: 3, color: "#8b9bb4" },
+  { label: "Insufficient Evidence", value: 4, color: "#8b9bb4" },
 ];
 
 export const reviewTrend = [42, 48, 46, 55, 61, 64, 72];
 
 export const recentEvidence = [
+  {
+    title: "Fabric intake manifest",
+    zone: "Fabric Storage",
+    status: "Supported" as EvidenceCategory,
+    time: "10:42",
+  },
   {
     title: "Emergency exit inspection",
     zone: "Finishing",

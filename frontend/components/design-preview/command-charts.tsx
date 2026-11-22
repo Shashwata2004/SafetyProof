@@ -9,45 +9,55 @@ export function ProgressRing({
   size = 112,
   color = "#22d3ee",
 }: {
-  value: number;
+  value?: number;
   label: string;
   size?: number;
   color?: string;
 }) {
   const radius = 42;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - value / 100);
+  const available = typeof value === "number";
+  const progress = available ? Math.min(100, Math.max(0, value)) : 0;
 
   return (
     <div className={styles.ringWrap} style={{ width: size, height: size }}>
-      <svg viewBox="0 0 100 100" role="img" aria-label={`${label}: ${value}% demo data`}>
+      <svg viewBox="0 0 100 100" role="img" aria-label={available ? `${label}: ${progress}%` : `${label}: not available`}>
         <circle className={styles.ringTrack} cx="50" cy="50" r={radius} />
         <circle
           className={styles.ringValue}
           cx="50"
           cy="50"
           r={radius}
-          style={{ stroke: color, strokeDasharray: circumference, strokeDashoffset: offset }}
+          pathLength="100"
+          style={{
+            stroke: color,
+            "--ring-offset": 100 - progress,
+          } as React.CSSProperties}
         />
       </svg>
       <span className={styles.ringText}>
-        <strong>{value}%</strong>
+        <strong>{available ? `${progress}%` : "N/A"}</strong>
         <small>{label}</small>
       </span>
     </div>
   );
 }
 
-export function EvidenceDonut() {
-  const total = evidenceCategories.reduce((sum, item) => sum + item.value, 0);
+export function EvidenceDonut({
+  categories = evidenceCategories,
+  label = "Demo evidence category distribution",
+}: {
+  categories?: Array<{ label: string; value: number; color: string }>;
+  label?: string;
+}) {
+  const total = categories.reduce((sum, item) => sum + item.value, 0);
   let accumulated = 0;
 
   return (
     <div className={styles.donutLayout}>
-      <svg className={styles.donut} viewBox="0 0 100 100" role="img" aria-label="Demo evidence category distribution">
+      <svg className={styles.donut} viewBox="0 0 100 100" role="img" aria-label={label}>
         <circle className={styles.donutTrack} cx="50" cy="50" r="36" />
-        {evidenceCategories.map((item) => {
-          const length = (item.value / total) * 100;
+        {categories.map((item) => {
+          const length = total ? (item.value / total) * 100 : 0;
           const offset = -accumulated;
           accumulated += length;
           return (
@@ -64,7 +74,7 @@ export function EvidenceDonut() {
               strokeDashoffset={offset}
               className={styles.donutSegment}
             >
-              <title>{`${item.label}: ${item.value} demo items`}</title>
+              <title>{`${item.label}: ${item.value} items`}</title>
             </circle>
           );
         })}
@@ -72,8 +82,8 @@ export function EvidenceDonut() {
         <text x="50" y="60" textAnchor="middle" className={styles.donutLabel}>items</text>
       </svg>
       <div className={styles.legend}>
-        {evidenceCategories.map((item) => (
-          <div key={item.label} className={styles.legendRow} title={`${item.value} demo evidence items`}>
+        {categories.map((item) => (
+          <div key={item.label} className={styles.legendRow} title={`${item.value} evidence items`}>
             <span className={styles.legendDot} style={{ background: item.color }} />
             <span>{item.label}</span>
             <strong>{item.value}</strong>
@@ -108,8 +118,8 @@ export function TrendChart() {
         </defs>
         <line x1="8" x2="292" y1="76" y2="76" className={styles.chartGrid} />
         <line x1="8" x2="292" y1="44" y2="44" className={styles.chartGrid} />
-        <polygon points={`8,86 ${points} 292,86`} fill="url(#trend-fill)" />
-        <polyline points={points} className={styles.trendLine} />
+        <polygon points={`8,86 ${points} 292,86`} fill="url(#trend-fill)" className={styles.trendArea} />
+        <polyline points={points} pathLength="1" className={styles.trendLine} />
         {reviewTrend.map((value, index) => {
           const [x, y] = points.split(" ")[index].split(",");
           return <circle key={`${value}-${index}`} cx={x} cy={y} r="3" className={styles.trendPoint}><title>{`Day ${index + 1}: ${value}% demo coverage`}</title></circle>;
