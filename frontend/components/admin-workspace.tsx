@@ -66,10 +66,21 @@ type CaseSummary = {
   tasks: { id: string; title: string; due_on: string; status: string }[];
   documents: { id: string; title: string }[];
 };
+type ScheduledInspection = {
+  id: string;
+  title: string;
+  factory: string;
+  programme: string | null;
+  inspection_on: string;
+  reviewer_name: string | null;
+  reviewer_organization: string | null;
+  report_status: "scheduled" | "in_progress" | "complete" | "needs_attention";
+};
 type View =
   | "factories"
   | "reviewers"
   | "factory-assignments"
+  | "scheduled-inspections"
   | "manager-applications";
 function status(value: string) {
   return value.replaceAll("_", " ");
@@ -117,6 +128,12 @@ export function AdminWorkspace({
     queryKey: ["admin-reviewers", token],
     queryFn: () => api<Reviewer[]>("/v1/admin/reviewers", token),
     enabled: view !== "manager-applications",
+  });
+  const scheduledInspections = useQuery({
+    queryKey: ["admin-scheduled-inspections", token],
+    queryFn: () =>
+      api<ScheduledInspection[]>("/v1/admin/scheduled-inspections", token),
+    enabled: view === "scheduled-inspections",
   });
   const managers = useQuery({
     queryKey: ["admin-applications", token],
@@ -251,6 +268,7 @@ export function AdminWorkspace({
               ["factories", "Factories"],
               ["reviewers", "Reviewers"],
               ["factory-assignments", "Factory assignments"],
+              ["scheduled-inspections", "Scheduled inspections"],
               ["manager-applications", "Manager applications"],
             ] as const
           ).map(([id, label]) => (
@@ -574,6 +592,60 @@ export function AdminWorkspace({
                 {busy ? "Scheduling…" : "Assign case and notify factory"}
               </button>
             </form>
+          </section>
+        )}
+        {view === "scheduled-inspections" && (
+          <section className="panel">
+            <div className="section-head">
+              <div>
+                <h1>Scheduled inspections</h1>
+                <p>Track assigned factory inspections and submitted reports.</p>
+              </div>
+            </div>
+            {scheduledInspections.isLoading && <Busy />}
+            {scheduledInspections.error && (
+              <ErrorNote text={message(scheduledInspections.error)} />
+            )}
+            {scheduledInspections.data?.length === 0 && (
+              <p className="panel-pad">No inspections scheduled yet.</p>
+            )}
+            {scheduledInspections.data?.map((item) => (
+              <div className="admin-row" key={item.id}>
+                <div>
+                  <strong>{item.title}</strong>
+                  <small>
+                    {item.factory} · {dateText(item.inspection_on)}
+                  </small>
+                  <small>
+                    Reviewer: {item.reviewer_name || "Unassigned"}
+                    {item.reviewer_organization
+                      ? ` · ${item.reviewer_organization}`
+                      : ""}
+                  </small>
+                  {item.programme && <small>Programme: {item.programme}</small>}
+                </div>
+                <div className="inline-actions">
+                  <Tag
+                    tone={
+                      item.report_status === "complete"
+                        ? "green"
+                        : item.report_status === "needs_attention"
+                          ? "red"
+                          : "amber"
+                    }
+                  >
+                    {item.report_status === "complete"
+                      ? "Complete"
+                      : item.report_status === "in_progress"
+                        ? "In progress"
+                        : item.report_status === "needs_attention"
+                          ? "Report needs attention"
+                          : "Scheduled"}
+                  </Tag>
+                  <button onClick={() => setCaseId(item.id)}>View case</button>
+                </div>
+              </div>
+            ))}
           </section>
         )}
         {view === "manager-applications" && (

@@ -821,6 +821,90 @@ def account_router(user, db_dep):
     async def factory_overview(u=Depends(admin), db=Depends(db_dep)):
         return await db.rpc("factory_overview")
 
+    @router.get("/admin/scheduled-inspections")
+    async def scheduled_inspections(u=Depends(admin), db=Depends(db_dep)):
+        cases = await db.rows(
+            "cases",
+            fields="id,title,factory,programme,inspection_on,reviewer_id,created_at",
+            filters={
+                "inspection_on": "not.is.null",
+                "archived": "eq.false",
+                "deleting": "eq.false",
+            },
+            order="inspection_on,id",
+        )
+        if not cases:
+            return []
+
+        case_ids = ",".join(row["id"] for row in cases)
+        documents = await db.rows(
+            "documents",
+            fields="id,case_id,title,role",
+            filters={"case_id": "in.(" + case_ids + ")"},
+        )
+        inspection_docs = [row for row in documents if row["role"] == "inspection"]
+        document_ids = ",".join(row["id"] for row in inspection_docs)
+        versions = (
+            await db.rows(
+                "document_versions",
+                fields="document_id,revision,status",
+                filters={"document_id": "in.(" + document_ids + ")"},
+                order="revision.desc",
+            )
+            if document_ids
+            else []
+        )
+        latest_versions = {}
+        for version in versions:
+            previous = latest_versions.get(version["document_id"])
+            if previous is None or version["revision"] > previous["revision"]:
+                latest_versions[version["document_id"]] = version
+
+        reviewer_ids = sorted(
+            {row["reviewer_id"] for row in cases if row["reviewer_id"]}
+        )
+        reviewers = (
+            await db.rows(
+                "account_profiles",
+                fields="id,full_name,organization",
+                filters={"id": "in.(" + ",".join(reviewer_ids) + ")"},
+            )
+            if reviewer_ids
+            else []
+        )
+        reviewer_by_id = {row["id"]: row for row in reviewers}
+        documents_by_case = {}
+        for document in inspection_docs:
+            documents_by_case.setdefault(document["case_id"], []).append(document)
+
+        result = []
+        for case in cases:
+            states = [
+                latest_versions[doc["id"]]["status"]
+                for doc in documents_by_case.get(case["id"], [])
+                if doc["id"] in latest_versions
+            ]
+            if any(state in ("ready", "partial") for state in states):
+                report_status = "complete"
+            elif any(state in ("awaiting_upload", "queued") for state in states):
+                report_status = "in_progress"
+            elif "failed" in states:
+                report_status = "needs_attention"
+            else:
+                report_status = "scheduled"
+            reviewer = reviewer_by_id.get(case["reviewer_id"])
+            result.append(
+                {
+                    **case,
+                    "reviewer_name": reviewer["full_name"] if reviewer else None,
+                    "reviewer_organization": reviewer["organization"]
+                    if reviewer
+                    else None,
+                    "report_status": report_status,
+                }
+            )
+        return result
+
     @router.post("/admin/factories", status_code=201)
     async def create_factory(body: FactoryInput, u=Depends(admin), db=Depends(db_dep)):
         try:

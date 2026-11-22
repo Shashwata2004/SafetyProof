@@ -233,7 +233,8 @@ function App() {
     const view =
       requestedView === "reviewers" ||
       requestedView === "manager-applications" ||
-      requestedView === "factory-assignments"
+      requestedView === "factory-assignments" ||
+      requestedView === "scheduled-inspections"
         ? requestedView
         : "factories";
     return (
