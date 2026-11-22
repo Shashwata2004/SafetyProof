@@ -500,6 +500,13 @@ async def pages(
     d=Depends(db),
 ):
     await d.one("document_versions", vid, token=u.token)
+    if u.role == "factory_manager":
+        return await d.rows(
+            "pages",
+            fields="id,page_no,method,quality,text",
+            filters={"version_id": "eq." + str(vid), "page_no": "gt." + str(offset)},
+            order="page_no",
+        )
     if limit is not None:
         return await d.call(
             "GET",
