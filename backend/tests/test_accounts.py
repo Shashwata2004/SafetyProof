@@ -230,6 +230,11 @@ async def test_account_onboarding(monkeypatch):
                 "role": "reviewer",
                 "status": "active",
                 "factory_id": None,
+                "phone": None,
+                "job_title": None,
+                "id_card_number": None,
+                "membership_number": None,
+                "consent_at": None,
             }
             await call("GET", "/admin/reviewers", 403, headers=reviewer)
             organizations = (await call("GET", "/reviewer-organizations")).json()
@@ -349,6 +354,9 @@ async def test_account_onboarding(monkeypatch):
                             "factory": item["name"],
                             "title": "Account test",
                             "reviewer_id": uid,
+                            "inspection_on": (
+                                "2030-08-01" if item == factories[0] else "2030-08-02"
+                            ),
                         },
                     )
                 ).json()
