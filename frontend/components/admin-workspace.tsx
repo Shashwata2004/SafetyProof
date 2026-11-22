@@ -121,9 +121,7 @@ export function AdminWorkspace({
     enabled: view === "manager-applications",
   });
   const assignees =
-    reviewers.data?.filter((row) =>
-      ["active", "pending"].includes(row.status),
-    ) || [];
+    reviewers.data?.filter((row) => row.status === "active") || [];
   const assignee = assignees.find((row) => row.id === assigneeId);
   const names = new Map(factories.data?.map((f) => [f.id, f.name]));
 
@@ -398,7 +396,7 @@ export function AdminWorkspace({
               </label>
               {!reviewers.isLoading &&
                 !reviewers.error &&
-                !assignees.length && <p>Add a reviewer first.</p>}
+                !assignees.length && <p>No active reviewers available.</p>}
               {assignee && factories.isSuccess && (
                 <form
                   key={assignee.id}
