@@ -859,15 +859,20 @@ function Upload({
       );
       // If the PDF gives a single inspection date but no reporting-period
       // start, use that dated visit as the start. Never invent a period end.
-      setPeriodStart(
+      const nextPeriodStart =
         validInspectionSource && !extractedInspectionDateMismatch
           ? result.period_start ||
-              (inspection ? result.inspection_date || "" : "")
-          : "",
-      );
-      setPeriodEnd(
+            (inspection ? result.inspection_date || "" : "")
+          : "";
+      const nextPeriodEnd =
         validInspectionSource && !extractedInspectionDateMismatch
           ? result.period_end || ""
+          : "";
+      setPeriodStart(nextPeriodStart);
+      setPeriodEnd(
+        nextPeriodEnd &&
+          (!nextPeriodStart || nextPeriodEnd >= nextPeriodStart)
+          ? nextPeriodEnd
           : "",
       );
       if (!scheduled && result.issuer) setIssuer(result.issuer);
@@ -1109,7 +1114,11 @@ function Upload({
               name="period_start"
               type="date"
               value={periodStart}
-              onChange={(e) => setPeriodStart(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setPeriodStart(next);
+                if (periodEnd && next && periodEnd < next) setPeriodEnd("");
+              }}
               {...bounds}
             />
           </label>
@@ -1121,6 +1130,7 @@ function Upload({
               value={periodEnd}
               onChange={(e) => setPeriodEnd(e.target.value)}
               {...bounds}
+              min={periodStart || bounds.min}
             />
           </label>
         </div>
