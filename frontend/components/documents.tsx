@@ -996,7 +996,7 @@ function Upload({
           </p>
         )}
         {inspection && extracted?.content_check === "valid" && (
-          <p className="hint" role="status">
+          <p className="callout success-document" role="status">
             Content check passed: {extracted.content_reason} This checks the
             document type, not whether its claims are true.
           </p>
