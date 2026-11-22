@@ -60,6 +60,7 @@ async def test_large_pdf_checkpoints_and_case_can_exceed_one_hundred_pages(
                 "factory": factory,
                 "title": "Large PDF integration",
                 "reviewer_id": session["user"]["id"],
+                "inspection_on": "2030-11-14",
             },
         )
         case.raise_for_status()
@@ -74,6 +75,7 @@ async def test_large_pdf_checkpoints_and_case_can_exceed_one_hundred_pages(
                         "filename": "report.pdf",
                         "title": title,
                         "role": "inspection",
+                        "issued_on": "2030-11-14",
                         "confirmed_factory": factory,
                     },
                 )

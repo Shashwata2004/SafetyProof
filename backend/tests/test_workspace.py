@@ -183,8 +183,19 @@ async def test_case_review_and_permissions(monkeypatch, test_viewer, case_admin)
                 "factory": "Shaluk Threadworks Ltd.",
                 "title": "Integration smoke",
                 "reviewer_id": users["reviewer"],
+                "inspection_on": "2030-09-15",
             },
             status=201,
+        )
+        # This integration case uses the older sample-document workflow. Preserve
+        # its date-less legacy shape after creation, since newly assigned cases
+        # now require dates and cannot accept samples.
+        await main.app.state.db.call(
+            "PATCH",
+            "/rest/v1/cases",
+            admin=True,
+            params={"id": "eq." + case["id"]},
+            data={"inspection_on": None},
         )
         path = "/cases/" + case["id"]
         try:
@@ -499,7 +510,11 @@ async def test_interrupted_job_reclaims_lease(monkeypatch, case_admin):
             "create_case",
             actor_id=case_admin[0],
             assignee_id=actor,
-            data={"factory": "Shaluk Threadworks Ltd.", "title": "Lease test"},
+            data={
+                "factory": "Shaluk Threadworks Ltd.",
+                "title": "Lease test",
+                "inspection_on": "2030-10-16",
+            },
         )
         cid = case["id"]
         try:
@@ -513,6 +528,7 @@ async def test_interrupted_job_reclaims_lease(monkeypatch, case_admin):
                     "filename": "test.pdf",
                     "title": "Inspection",
                     "role": "inspection",
+                    "issued_on": "2030-10-16",
                     "issuer": "external",
                 },
             )
