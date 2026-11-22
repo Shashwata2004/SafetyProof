@@ -41,6 +41,7 @@ import {
   evidenceStatusCounts,
   groupEvidenceByZone,
   officialEvidenceStatus,
+  officialStatusColors,
 } from "./evidence-intelligence";
 import { useEvidenceIntelligence } from "./use-evidence-intelligence";
 import styles from "./garment-command-center.module.css";
@@ -116,6 +117,17 @@ export function GarmentCommandCenter() {
     () => evidenceStatusCounts(intelligence.results),
     [intelligence.results],
   );
+  const realCategories = useMemo(
+    () =>
+      (Object.keys(officialStatusColors) as Array<keyof typeof officialStatusColors>).map(
+        (label) => ({
+          label,
+          value: statusSummary.counts[label],
+          color: officialStatusColors[label],
+        }),
+      ),
+    [statusSummary],
+  );
   const zoneCounts = useMemo(
     () =>
       Object.fromEntries(
@@ -138,6 +150,20 @@ export function GarmentCommandCenter() {
       result.outcome !== "supported" && reviewStatus(result) === "Pending review",
   ).length;
   const mappedZones = factoryZones.filter((zone) => zoneCounts[zone.id] > 0).length;
+  const reviewedItems = intelligence.results.filter(
+    (result) => reviewStatus(result) !== "Pending review",
+  ).length;
+  const classifiedPercent = intelligence.results.length
+    ? Math.round((statusSummary.classified / intelligence.results.length) * 100)
+    : undefined;
+  const reviewedPercent = intelligence.results.length
+    ? Math.round((reviewedItems / intelligence.results.length) * 100)
+    : undefined;
+  const displayedCategories = realData
+    ? realCategories
+    : demoMode
+      ? evidenceCategories
+      : evidenceCategories.map((item) => ({ ...item, value: 0 }));
   const selectZone = (zone: ZoneId) => {
     setSelectedZone(zone);
     setEvidenceScope("zone");
@@ -331,13 +357,17 @@ export function GarmentCommandCenter() {
                 <FileCheck2 aria-hidden="true" />
               </div>
               <div className={styles.verificationList}>
-                {evidenceCategories.map((item) => (
+                {displayedCategories.map((item) => (
                   <div key={item.label}>
                     <span className={categoryTone[item.label]}>{item.label}</span>
                     <div className={styles.verificationBar} aria-hidden="true">
                       <i
                         style={{
-                          width: `${(item.value / 20) * 100}%`,
+                          width: `${intelligence.results.length && realData
+                            ? (item.value / intelligence.results.length) * 100
+                            : demoMode
+                              ? (item.value / 20) * 100
+                              : 0}%`,
                           background: item.color,
                         }}
                       />
@@ -346,7 +376,10 @@ export function GarmentCommandCenter() {
                   </div>
                 ))}
               </div>
-              <span className={styles.demoTag}>DEMO DATA</span>
+              <span className={styles.demoTag}>{realData ? "AUTHORIZED CASE" : "DEMO DATA"}</span>
+              {realData && statusSummary.unclassified > 0 && (
+                <p className={styles.analyticsNote}>{statusSummary.unclassified} result{statusSummary.unclassified === 1 ? "" : "s"} remain Not available because the backend did not publish one of the four supported categories.</p>
+              )}
             </section>
 
             <section className={`${styles.panel} ${styles.compactPanel}`}>
@@ -354,8 +387,11 @@ export function GarmentCommandCenter() {
                 <div><span className={styles.kicker}>Distribution</span><h2>Evidence status</h2></div>
                 <Gauge aria-hidden="true" />
               </div>
-              <EvidenceDonut />
-              <span className={styles.demoTag}>DEMO DATA</span>
+              <EvidenceDonut
+                categories={displayedCategories}
+                label={realData ? "Authorized evidence category distribution" : "Demo evidence category distribution"}
+              />
+              <span className={styles.demoTag}>{realData ? "AUTHORIZED CASE" : "DEMO DATA"}</span>
             </section>
 
             <section className={`${styles.panel} ${styles.compactPanel}`}>
@@ -363,8 +399,17 @@ export function GarmentCommandCenter() {
                 <div><span className={styles.kicker}>Seven-day sample</span><h2>Coverage trend</h2></div>
                 <Activity aria-hidden="true" />
               </div>
-              <TrendChart />
-              <div className={styles.trendSummary}><strong>+30%</strong><span>illustrative change</span><em>DEMO DATA</em></div>
+              {realData ? (
+                <div className={styles.notAvailableMetric}>
+                  <strong>Not available</strong>
+                  <span>No dated historical result series is exposed for this selected case.</span>
+                </div>
+              ) : (
+                <>
+                  <TrendChart />
+                  <div className={styles.trendSummary}><strong>+30%</strong><span>illustrative change</span><em>DEMO DATA</em></div>
+                </>
+              )}
             </section>
           </aside>
 
@@ -419,31 +464,50 @@ export function GarmentCommandCenter() {
               <Search aria-hidden="true" />
             </div>
             <div className={styles.miniRings}>
-              <ProgressRing value={72} label="overall" size={88} />
-              <ProgressRing value={61} label="photos" size={88} color="#34d399" />
-              <ProgressRing value={48} label="records" size={88} color="#a78bfa" />
+              <ProgressRing value={realData ? classifiedPercent : demoMode ? 72 : undefined} label={realData ? "classified" : "overall"} size={88} />
+              <ProgressRing value={realData ? reviewedPercent : demoMode ? 61 : undefined} label={realData ? "reviewed" : "photos"} size={88} color="#34d399" />
+              <ProgressRing value={realData ? undefined : demoMode ? 48 : undefined} label={realData ? "history" : "records"} size={88} color="#a78bfa" />
             </div>
-            <span className={styles.demoTag}>DEMO DATA · NOT A COMPLIANCE RESULT</span>
+            <span className={styles.demoTag}>{realData ? "DOCUMENTARY REVIEW · NOT A SAFETY SCORE" : "DEMO DATA · NOT A COMPLIANCE RESULT"}</span>
           </section>
 
           <section className={`${styles.panel} ${styles.activityPanel}`}>
             <div className={styles.panelHeading}>
-              <div><span className={styles.kicker}>Illustrative activity</span><h2>Recent evidence</h2></div>
-              <span className={styles.demoTag}>DEMO DATA</span>
+              <div><span className={styles.kicker}>{realData ? "Authorized snapshot" : "Illustrative activity"}</span><h2>{realData ? "Evidence records" : "Recent evidence"}</h2></div>
+              <span className={styles.demoTag}>{realData ? "SOURCE-CITED" : "DEMO DATA"}</span>
             </div>
-            <div className={styles.activityList}>
-              {recentEvidence.map((item) => (
-                <div key={item.title}>
-                  <span className={`${styles.activityIcon} ${categoryTone[item.status]}`}><FileCheck2 aria-hidden="true" /></span>
-                  <span className={styles.activityCopy}><strong>{item.title}</strong><small>{item.zone} · sample record</small></span>
-                  <span className={categoryTone[item.status]}>{item.status}</span>
-                  <time>{item.time}</time>
-                </div>
-              ))}
-            </div>
+            {realData ? (
+              <div className={styles.realEvidenceList}>
+                {intelligence.results.length ? intelligence.results.slice(0, 4).map((result) => {
+                  const status = officialEvidenceStatus(result.outcome);
+                  return (
+                    <a key={result.id} href={reviewHref(result.id)}>
+                      <span className={`${styles.activityIcon} ${status ? categoryTone[status] : styles.toneUnavailable}`}><FileCheck2 aria-hidden="true" /></span>
+                      <span className={styles.activityCopy}><strong dir="auto">{result.claim.source.quote}</strong><small>{result.claim.source.document} · page {result.claim.source.page}</small></span>
+                      <span className={status ? categoryTone[status] : styles.toneUnavailable}>{status || "Not available"}</span>
+                    </a>
+                  );
+                }) : <p className={styles.zoneSummary}>{intelligence.run ? "This run contains no published results." : "No complete or partial verification run is available."}</p>}
+              </div>
+            ) : (
+              <div className={styles.activityList}>
+                {recentEvidence.map((item) => (
+                  <div key={item.title}>
+                    <span className={`${styles.activityIcon} ${categoryTone[item.status]}`}><FileCheck2 aria-hidden="true" /></span>
+                    <span className={styles.activityCopy}><strong>{item.title}</strong><small>{item.zone} · sample record</small></span>
+                    <span className={categoryTone[item.status]}>{item.status}</span>
+                    <time>{item.time}</time>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
-        <footer className={styles.previewFooter}>Design-preview analytics are illustrative and isolated from production verification workflows.</footer>
+        <footer className={styles.previewFooter}>
+          {realData
+            ? "Authorized evidence is read-only here; open a source record to continue in the existing review workflow."
+            : "Design-preview analytics are illustrative and isolated from production verification workflows."}
+        </footer>
       </section>
     </main>
   );

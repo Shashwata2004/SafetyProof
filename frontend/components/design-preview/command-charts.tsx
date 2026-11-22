@@ -42,16 +42,22 @@ export function ProgressRing({
   );
 }
 
-export function EvidenceDonut() {
-  const total = evidenceCategories.reduce((sum, item) => sum + item.value, 0);
+export function EvidenceDonut({
+  categories = evidenceCategories,
+  label = "Demo evidence category distribution",
+}: {
+  categories?: Array<{ label: string; value: number; color: string }>;
+  label?: string;
+}) {
+  const total = categories.reduce((sum, item) => sum + item.value, 0);
   let accumulated = 0;
 
   return (
     <div className={styles.donutLayout}>
-      <svg className={styles.donut} viewBox="0 0 100 100" role="img" aria-label="Demo evidence category distribution">
+      <svg className={styles.donut} viewBox="0 0 100 100" role="img" aria-label={label}>
         <circle className={styles.donutTrack} cx="50" cy="50" r="36" />
-        {evidenceCategories.map((item) => {
-          const length = (item.value / total) * 100;
+        {categories.map((item) => {
+          const length = total ? (item.value / total) * 100 : 0;
           const offset = -accumulated;
           accumulated += length;
           return (
@@ -68,7 +74,7 @@ export function EvidenceDonut() {
               strokeDashoffset={offset}
               className={styles.donutSegment}
             >
-              <title>{`${item.label}: ${item.value} demo items`}</title>
+              <title>{`${item.label}: ${item.value} items`}</title>
             </circle>
           );
         })}
@@ -76,8 +82,8 @@ export function EvidenceDonut() {
         <text x="50" y="60" textAnchor="middle" className={styles.donutLabel}>items</text>
       </svg>
       <div className={styles.legend}>
-        {evidenceCategories.map((item) => (
-          <div key={item.label} className={styles.legendRow} title={`${item.value} demo evidence items`}>
+        {categories.map((item) => (
+          <div key={item.label} className={styles.legendRow} title={`${item.value} evidence items`}>
             <span className={styles.legendDot} style={{ background: item.color }} />
             <span>{item.label}</span>
             <strong>{item.value}</strong>

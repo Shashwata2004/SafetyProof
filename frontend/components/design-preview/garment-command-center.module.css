@@ -206,6 +206,7 @@
 .verificationList strong { font-size: 13px; }
 .verificationBar { height: 3px; border-radius: 99px; background: rgba(139,181,201,.1); overflow: hidden; }
 .verificationBar i { display: block; height: 100%; border-radius: inherit; box-shadow: 0 0 8px currentColor; animation: barReveal .7s cubic-bezier(.2,.8,.2,1) both; transform-origin: left; }
+.analyticsNote { margin: 10px 0 0; color: #718b99; font-size: 8px; line-height: 1.45; }
 .toneSupported { color: #7ce7bd; background: rgba(52,211,153,.1); }
 .toneUnresolved { color: #fbd375; background: rgba(251,191,36,.11); }
 .toneContradictory { color: #ff9bac; background: rgba(251,113,133,.11); }
@@ -233,6 +234,9 @@
 .trendSummary strong { color: var(--cyan); font-size: 18px; }
 .trendSummary span { color: var(--muted); font-size: 8px; }
 .trendSummary em { margin-left: auto; color: #638a98; font-style: normal; font-size: 7px; }
+.notAvailableMetric { min-height: 104px; margin-top: 10px; border: 1px dashed rgba(139,181,201,.16); border-radius: 11px; background: rgba(255,255,255,.015); display: grid; place-content: center; gap: 5px; text-align: center; }
+.notAvailableMetric strong { color: #adbec7; font-size: 13px; }
+.notAvailableMetric span { max-width: 190px; color: #6e8794; font-size: 8px; line-height: 1.45; }
 
 .glancePanel { grid-area: glance; padding: 18px; }
 .glanceStats { margin: 15px 0 11px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -264,6 +268,12 @@
 .activityCopy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .activityCopy small { color: var(--muted); font-size: 8px; }
 .activityList time { color: #64808e; font-size: 8px; font-variant-numeric: tabular-nums; text-align: right; }
+.realEvidenceList { margin-top: 8px; display: grid; }
+.realEvidenceList > a { min-height: 44px; display: grid; grid-template-columns: 27px minmax(0,1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid rgba(139,181,201,.1); color: inherit; text-decoration: none; }
+.realEvidenceList > a:last-child { border-bottom: 0; }
+.realEvidenceList > a:hover .activityCopy strong, .realEvidenceList > a:focus-visible .activityCopy strong { color: var(--cyan); }
+.realEvidenceList > a:focus-visible { outline: 1px solid var(--cyan); outline-offset: 2px; }
+.realEvidenceList > a > span:last-child { width: fit-content; padding: 4px 7px; border-radius: 6px; font-size: 8px; font-weight: 750; }
 .previewFooter { padding: 0 32px 22px; color: #506b79; font-size: 9px; text-align: center; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
