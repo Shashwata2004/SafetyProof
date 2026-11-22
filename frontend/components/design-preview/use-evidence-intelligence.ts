@@ -70,17 +70,24 @@ export function useEvidenceIntelligence() {
     const controller = new AbortController();
     setAccountState("loading");
     setError("");
-    void Promise.all([
-      api<components["schemas"]["AccountProfile"]>(
+    void api<components["schemas"]["AccountProfile"]>(
         "/v1/me",
         token,
         "GET",
         undefined,
         controller.signal,
-      ),
-      api<Case[]>("/v1/cases", token, "GET", undefined, controller.signal),
-    ])
-      .then(([nextProfile, nextCases]) => {
+      )
+      .then(async (nextProfile) => {
+        const nextCases = nextProfile.role === "admin"
+          ? []
+          : await api<Case[]>(
+              "/v1/cases",
+              token,
+              "GET",
+              undefined,
+              controller.signal,
+            );
+        if (controller.signal.aborted) return;
         setProfile(nextProfile);
         setCases(nextCases);
         setAccountState("ready");

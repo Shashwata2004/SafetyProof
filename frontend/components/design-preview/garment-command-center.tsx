@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import {
   Activity,
+  AlertTriangle,
   Bell,
   Boxes,
   Building2,
@@ -26,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { reviewStatus } from "@/lib/review";
 import { EvidenceDonut, ProgressRing, TrendChart } from "./command-charts";
 import {
   demoDisclaimer,
@@ -35,6 +37,12 @@ import {
   type ZoneId,
 } from "./demo-data";
 import { PreviewErrorBoundary } from "./preview-error-boundary";
+import {
+  evidenceStatusCounts,
+  groupEvidenceByZone,
+  officialEvidenceStatus,
+} from "./evidence-intelligence";
+import { useEvidenceIntelligence } from "./use-evidence-intelligence";
 import styles from "./garment-command-center.module.css";
 
 const GarmentFactoryScene = dynamic(() => import("./garment-factory-scene"), {
@@ -64,10 +72,12 @@ const categoryTone: Record<string, string> = {
 };
 
 export function GarmentCommandCenter() {
+  const intelligence = useEvidenceIntelligence();
   const [selectedZone, setSelectedZone] = useState<ZoneId>("sewing");
   const [hoveredZone, setHoveredZone] = useState<ZoneId | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [evidenceScope, setEvidenceScope] = useState<"zone" | "unassigned">("zone");
   const [clock, setClock] = useState("--:--");
 
   useEffect(() => {
@@ -98,6 +108,50 @@ export function GarmentCommandCenter() {
     () => factoryZones.find((zone) => zone.id === selectedZone) ?? factoryZones[0],
     [selectedZone],
   );
+  const groupedEvidence = useMemo(
+    () => groupEvidenceByZone(intelligence.results),
+    [intelligence.results],
+  );
+  const statusSummary = useMemo(
+    () => evidenceStatusCounts(intelligence.results),
+    [intelligence.results],
+  );
+  const zoneCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        factoryZones.map((zone) => [zone.id, groupedEvidence.byZone[zone.id].length]),
+      ) as Record<ZoneId, number>,
+    [groupedEvidence],
+  );
+  const realData = intelligence.realMode;
+  const demoMode = intelligence.accountState === "signed-out";
+  const evidenceLoading =
+    intelligence.accountState === "restoring" ||
+    intelligence.accountState === "loading" ||
+    intelligence.evidenceState === "loading";
+  const selectedEvidence =
+    evidenceScope === "unassigned"
+      ? groupedEvidence.unassigned
+      : groupedEvidence.byZone[selectedZone];
+  const openFlags = intelligence.results.filter(
+    (result) =>
+      result.outcome !== "supported" && reviewStatus(result) === "Pending review",
+  ).length;
+  const mappedZones = factoryZones.filter((zone) => zoneCounts[zone.id] > 0).length;
+  const selectZone = (zone: ZoneId) => {
+    setSelectedZone(zone);
+    setEvidenceScope("zone");
+  };
+  const reviewHref = (resultId: string) => {
+    if (!intelligence.selectedCaseId || !intelligence.run) return "/";
+    const params = new URLSearchParams({
+      case: intelligence.selectedCaseId,
+      view: "review",
+      run: intelligence.run.id,
+      item: resultId,
+    });
+    return `/?${params}`;
+  };
 
   return (
     <main className={styles.commandCenter}>
@@ -132,20 +186,63 @@ export function GarmentCommandCenter() {
             </div>
           </div>
           <div className={styles.topbarMeta}>
-            <div className={styles.previewPill}><Sparkles aria-hidden="true" /> Design preview</div>
-            <div className={styles.factorySelect} title="Illustrative factory identity">
-              <Building2 aria-hidden="true" />
-              <span><small>DEMO FACTORY</small>Orion Garments Unit 07</span>
-              <ChevronRight aria-hidden="true" />
+            <div className={styles.previewPill}>
+              <Sparkles aria-hidden="true" />
+              {realData ? "Authorized evidence" : demoMode ? "Design preview" : "Connecting data"}
             </div>
+            {realData ? (
+              <div className={styles.realSelectors} aria-label="Authorized factory and case selection">
+                <label>
+                  <Building2 aria-hidden="true" />
+                  <span>Factory</span>
+                  <select
+                    value={intelligence.selectedFactory}
+                    onChange={(event) => {
+                      intelligence.setSelectedFactory(event.target.value);
+                      intelligence.setSelectedCaseId("");
+                    }}
+                    disabled={!intelligence.factories.length}
+                  >
+                    {intelligence.factories.map((factory) => <option key={factory}>{factory}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <ClipboardCheck aria-hidden="true" />
+                  <span>Case</span>
+                  <select
+                    value={intelligence.selectedCaseId}
+                    onChange={(event) => intelligence.setSelectedCaseId(event.target.value)}
+                    disabled={!intelligence.factoryCases.length}
+                  >
+                    {intelligence.factoryCases.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+                  </select>
+                </label>
+              </div>
+            ) : (
+              <div className={styles.factorySelect} title="Illustrative factory identity">
+                <Building2 aria-hidden="true" />
+                <span><small>DEMO FACTORY</small>Orion Garments Unit 07</span>
+                <ChevronRight aria-hidden="true" />
+              </div>
+            )}
             <div className={styles.localClock}><Clock3 aria-hidden="true" /><span><small>LOCAL TIME</small>{clock}</span></div>
             <button type="button" className={styles.iconButton} title="Demo notifications"><Bell aria-hidden="true" /><span>3</span></button>
           </div>
         </header>
 
-        <div className={styles.demoBanner} role="note">
-          <span>DEMO DATA</span>
-          <p>{demoDisclaimer}</p>
+        <div className={`${styles.demoBanner} ${realData ? styles.realBanner : ""}`} role="note">
+          <span>{realData ? "AUTHORIZED DATA" : demoMode ? "DEMO DATA" : "DATA STATUS"}</span>
+          <p>
+            {realData
+              ? intelligence.dossier
+                ? `${intelligence.dossier.case.title} · Evidence classifications are documentary findings, not a factory safety certification.`
+                : intelligence.cases.length
+                  ? "Loading the selected authorized case…"
+                  : "No authorized cases are available for this account."
+              : demoMode
+                ? demoDisclaimer
+                : intelligence.error || "Restoring the authenticated evidence session…"}
+          </p>
         </div>
 
         <div className={styles.dashboardGrid}>
@@ -155,15 +252,21 @@ export function GarmentCommandCenter() {
               <span className={styles.demoTag}>DEMO DATA</span>
             </div>
             <div className={styles.overviewContent}>
-              <ProgressRing value={72} label="coverage" size={124} />
+              <ProgressRing
+                value={realData && intelligence.results.length
+                  ? Math.round((statusSummary.classified / intelligence.results.length) * 100)
+                  : demoMode ? 72 : undefined}
+                label={realData ? "classified" : "coverage"}
+                size={124}
+              />
               <div className={styles.metricGrid}>
-                <div><strong>6</strong><span>Review zones</span></div>
-                <div><strong>20</strong><span>Evidence items</span></div>
-                <div><strong>4</strong><span>Open review flags</span></div>
-                <div><strong>12</strong><span>Supported items</span></div>
+                <div><strong>{realData ? mappedZones : demoMode ? 6 : "—"}</strong><span>{realData ? "Mapped zones" : "Review zones"}</span></div>
+                <div><strong>{realData ? intelligence.results.length : demoMode ? 20 : "—"}</strong><span>Evidence items</span></div>
+                <div><strong>{realData ? openFlags : demoMode ? 4 : "—"}</strong><span>Open review flags</span></div>
+                <div><strong>{realData ? statusSummary.counts.Supported : demoMode ? 12 : "—"}</strong><span>Supported items</span></div>
               </div>
             </div>
-            <p className={styles.panelNote}><ShieldCheck aria-hidden="true" /> Coverage reflects demo evidence classification, not facility safety.</p>
+            <p className={styles.panelNote}><ShieldCheck aria-hidden="true" /> {realData ? "Classified is the share of results with one of the four supported evidence categories; it is not a safety score." : "Coverage reflects demo evidence classification, not facility safety."}</p>
           </section>
 
           <section className={`${styles.panel} ${styles.scenePanel}`} aria-labelledby="scene-title">
@@ -183,7 +286,8 @@ export function GarmentCommandCenter() {
                   selectedZone={selectedZone}
                   hoveredZone={hoveredZone}
                   resetSignal={resetSignal}
-                  onSelect={setSelectedZone}
+                  zoneCounts={realData ? zoneCounts : undefined}
+                  onSelect={selectZone}
                   onHover={setHoveredZone}
                 />
               </PreviewErrorBoundary>
@@ -195,7 +299,7 @@ export function GarmentCommandCenter() {
                 <button
                   type="button"
                   key={zone.id}
-                  onClick={() => setSelectedZone(zone.id)}
+                  onClick={() => selectZone(zone.id)}
                   onMouseEnter={() => setHoveredZone(zone.id)}
                   onMouseLeave={() => setHoveredZone(null)}
                   className={selectedZone === zone.id ? styles.zoneActive : ""}
@@ -207,6 +311,16 @@ export function GarmentCommandCenter() {
                   <span />{zone.shortLabel}
                 </button>
               ))}
+              {realData && (
+                <button
+                  type="button"
+                  onClick={() => setEvidenceScope("unassigned")}
+                  className={evidenceScope === "unassigned" ? styles.zoneActive : styles.unassignedZone}
+                  aria-pressed={evidenceScope === "unassigned"}
+                >
+                  <AlertTriangle aria-hidden="true" /> Unassigned {groupedEvidence.unassigned.length}
+                </button>
+              )}
             </div>
           </section>
 
@@ -259,15 +373,44 @@ export function GarmentCommandCenter() {
               <div><span className={styles.kicker}>Selected zone</span><h2>{activeZone.label}</h2></div>
               <Boxes aria-hidden="true" />
             </div>
-            <div className={styles.glanceStats}>
-              <div><small>EVIDENCE</small><strong>{activeZone.evidence}</strong><span>demo items</span></div>
-              <div><small>OPEN FLAGS</small><strong>{activeZone.openFlags}</strong><span>for review</span></div>
-              <div><small>VIEW</small><strong>3D</strong><span>interactive</span></div>
-            </div>
-            <p className={styles.zoneSummary}>{activeZone.summary}</p>
-            <div className={styles.equipmentList} aria-label={`${activeZone.label} demo equipment`}>
-              {activeZone.equipment.map((item) => <span key={item}>{item}</span>)}
-            </div>
+            {realData ? (
+              <>
+                <div className={styles.glanceStats}>
+                  <div><small>EVIDENCE</small><strong>{selectedEvidence.length}</strong><span>authorized items</span></div>
+                  <div><small>LOCATION</small><strong>{evidenceScope === "unassigned" ? "—" : "Exact"}</strong><span>{evidenceScope === "unassigned" ? "not mapped" : "explicit match"}</span></div>
+                  <div><small>RUN</small><strong>{intelligence.run ? "Ready" : "N/A"}</strong><span>{intelligence.run?.status || "no results"}</span></div>
+                </div>
+                <div className={styles.evidenceCards} aria-live="polite">
+                  {evidenceLoading ? (
+                    <p className={styles.zoneSummary}>Loading authorized evidence…</p>
+                  ) : selectedEvidence.length ? selectedEvidence.slice(0, 5).map((result) => {
+                    const status = officialEvidenceStatus(result.outcome);
+                    return (
+                      <a key={result.id} href={reviewHref(result.id)} className={styles.evidenceCard}>
+                        <span className={status ? categoryTone[status] : styles.toneUnavailable}>{status || "Not available"}</span>
+                        <b dir="auto">{result.claim.source.quote}</b>
+                        <small>{result.claim.source.document} · page {result.claim.source.page}</small>
+                        <em>{reviewStatus(result)} · Open source review</em>
+                      </a>
+                    );
+                  }) : (
+                    <p className={styles.zoneSummary}>No findings in this snapshot have an explicit {evidenceScope === "unassigned" ? "zone location" : activeZone.label + " location"}.</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={styles.glanceStats}>
+                  <div><small>EVIDENCE</small><strong>{activeZone.evidence}</strong><span>demo items</span></div>
+                  <div><small>OPEN FLAGS</small><strong>{activeZone.openFlags}</strong><span>for review</span></div>
+                  <div><small>VIEW</small><strong>3D</strong><span>interactive</span></div>
+                </div>
+                <p className={styles.zoneSummary}>{activeZone.summary}</p>
+                <div className={styles.equipmentList} aria-label={`${activeZone.label} demo equipment`}>
+                  {activeZone.equipment.map((item) => <span key={item}>{item}</span>)}
+                </div>
+              </>
+            )}
           </section>
 
           <section className={`${styles.panel} ${styles.statusPanel}`}>

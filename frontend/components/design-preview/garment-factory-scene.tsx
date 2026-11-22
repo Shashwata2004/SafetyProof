@@ -20,6 +20,7 @@ type SceneProps = {
   selectedZone: ZoneId;
   hoveredZone: ZoneId | null;
   resetSignal: number;
+  zoneCounts?: Partial<Record<ZoneId, number>>;
   onSelect: (zone: ZoneId) => void;
   onHover: (zone: ZoneId | null) => void;
 };
@@ -114,10 +115,11 @@ function ZoneBoundary({ zone, active }: { zone: (typeof factoryZones)[number]; a
 }
 
 
-function ZoneHotspot({ zone, selected, hovered, onSelect, onHover }: {
+function ZoneHotspot({ zone, selected, hovered, evidenceCount, onSelect, onHover }: {
   zone: (typeof factoryZones)[number];
   selected: boolean;
   hovered: boolean;
+  evidenceCount: number;
   onSelect: (zone: ZoneId) => void;
   onHover: (zone: ZoneId | null) => void;
 }) {
@@ -158,7 +160,7 @@ function ZoneHotspot({ zone, selected, hovered, onSelect, onHover }: {
           <span />
           <span className={styles.markerCopy}>
             {zone.shortLabel}
-            {(selected || hovered) && <small>{zone.evidence} demo evidence items</small>}
+            {(selected || hovered) && <small>{evidenceCount} evidence items</small>}
           </span>
         </button>
       </Html>
@@ -196,6 +198,7 @@ function FactoryWorld(props: SceneProps & { reducedMotion: boolean }) {
           zone={zone}
           selected={props.selectedZone === zone.id}
           hovered={props.hoveredZone === zone.id}
+          evidenceCount={props.zoneCounts?.[zone.id] ?? zone.evidence}
           onSelect={props.onSelect}
           onHover={props.onHover}
         />

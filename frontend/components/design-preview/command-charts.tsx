@@ -9,16 +9,18 @@ export function ProgressRing({
   size = 112,
   color = "#22d3ee",
 }: {
-  value: number;
+  value?: number;
   label: string;
   size?: number;
   color?: string;
 }) {
   const radius = 42;
+  const available = typeof value === "number";
+  const progress = available ? Math.min(100, Math.max(0, value)) : 0;
 
   return (
     <div className={styles.ringWrap} style={{ width: size, height: size }}>
-      <svg viewBox="0 0 100 100" role="img" aria-label={`${label}: ${value}% demo data`}>
+      <svg viewBox="0 0 100 100" role="img" aria-label={available ? `${label}: ${progress}%` : `${label}: not available`}>
         <circle className={styles.ringTrack} cx="50" cy="50" r={radius} />
         <circle
           className={styles.ringValue}
@@ -28,12 +30,12 @@ export function ProgressRing({
           pathLength="100"
           style={{
             stroke: color,
-            "--ring-offset": 100 - value,
+            "--ring-offset": 100 - progress,
           } as React.CSSProperties}
         />
       </svg>
       <span className={styles.ringText}>
-        <strong>{value}%</strong>
+        <strong>{available ? `${progress}%` : "N/A"}</strong>
         <small>{label}</small>
       </span>
     </div>
