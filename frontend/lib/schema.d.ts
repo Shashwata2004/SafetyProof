@@ -346,6 +346,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Assigned Case */
+        post: operations["create_assigned_case_v1_admin_cases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/cases/{cid}": {
         parameters: {
             query?: never;
@@ -357,10 +374,12 @@ export interface paths {
         get: operations["admin_case_v1_admin_cases__cid__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Case */
+        delete: operations["delete_case_v1_admin_cases__cid__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Archive Case */
+        patch: operations["archive_case_v1_admin_cases__cid__patch"];
         trace?: never;
     };
     "/v1/admin/factories": {
@@ -933,6 +952,26 @@ export interface components {
             /** Archived */
             archived: boolean;
         };
+        /** AssignedCaseInput */
+        AssignedCaseInput: {
+            /** Period Start */
+            period_start?: string | null;
+            /** Period End */
+            period_end?: string | null;
+            /** Factory */
+            factory: string;
+            /** Title */
+            title: string;
+            /** Programme */
+            programme?: string | null;
+            /**
+             * Reviewer Id
+             * Format: uuid
+             */
+            reviewer_id: string;
+            /** Inspection On */
+            inspection_on?: string | null;
+        };
         /** Assignments */
         Assignments: {
             /** Factory Ids */
@@ -961,19 +1000,6 @@ export interface components {
              */
             comment: string;
         };
-        /** CaseInput */
-        CaseInput: {
-            /** Period Start */
-            period_start?: string | null;
-            /** Period End */
-            period_end?: string | null;
-            /** Factory */
-            factory: string;
-            /** Title */
-            title: string;
-            /** Programme */
-            programme?: string | null;
-        };
         /** CaseRecord */
         CaseRecord: {
             /** Period Start */
@@ -996,6 +1022,10 @@ export interface components {
              * Format: uuid
              */
             created_by: string;
+            /** Reviewer Id */
+            reviewer_id?: string | null;
+            /** Inspection On */
+            inspection_on?: string | null;
             /** Created At */
             created_at: string;
             /** Archived */
@@ -1948,6 +1978,39 @@ export interface operations {
             };
         };
     };
+    create_assigned_case_v1_admin_cases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignedCaseInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     admin_case_v1_admin_cases__cid__get: {
         parameters: {
             query?: never;
@@ -1958,6 +2021,72 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_case_v1_admin_cases__cid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_case_v1_admin_cases__cid__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Archive"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -2117,28 +2246,15 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CaseInput"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CaseRecord"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": unknown;
                 };
             };
         };

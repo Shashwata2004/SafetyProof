@@ -157,6 +157,8 @@ class Assessment(BaseModel):
 class CaseRecord(CaseInput):
     id: UUID
     created_by: UUID
+    reviewer_id: UUID | None = None
+    inspection_on: date | None = None
     created_at: str
     archived: bool
     deleting: bool

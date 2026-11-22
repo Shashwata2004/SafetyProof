@@ -24,11 +24,16 @@ def comparable(text):
     return " ".join(normalized(text).split()).strip(".।")
 
 
-async def evaluate(http, bundle, cfg, baseline):
+async def evaluate(http, admin, reviewer_id, bundle, cfg, baseline):
     start = time.perf_counter()
     metrics = {"id": bundle["id"], "expected": bundle["expected"]}
-    response = await http.post(
-        "/v1/cases", json={"title": bundle["id"], "factory": bundle["factory"]}
+    response = await admin.post(
+        "/v1/admin/cases",
+        json={
+            "title": bundle["id"],
+            "factory": bundle["factory"],
+            "reviewer_id": reviewer_id,
+        },
     )
     response.raise_for_status()
     cid = response.json()["id"]
@@ -202,7 +207,7 @@ async def evaluate(http, bundle, cfg, baseline):
                 else "unsupported",
             }[label]
     finally:
-        response = await http.delete(base)
+        response = await admin.delete(f"/v1/admin/cases/{cid}")
         response.raise_for_status()
     return metrics
 
@@ -216,6 +221,10 @@ async def main():
     cfg = settings()
     if not cfg.gemini_api_key:
         cli.error("GEMINI_API_KEY is required for real model evaluation.")
+    if not (cfg.admin_email and cfg.admin_password):
+        cli.error(
+            "ADMIN_EMAIL and ADMIN_PASSWORD are required to assign evaluation cases."
+        )
     email, password = os.environ.get("EVAL_EMAIL"), os.environ.get("EVAL_PASSWORD")
     if not (email and password):
         email, password = tuple(
@@ -248,14 +257,32 @@ async def main():
                 json={"email": email, "password": password},
             )
             result.raise_for_status()
-            token = result.json()["access_token"]
-        async with httpx.AsyncClient(
-            base_url=os.environ.get("EVAL_API_URL", "http://127.0.0.1:8000"),
-            timeout=30,
-            headers={"Authorization": "Bearer " + token},
-        ) as http:
+            reviewer = result.json()
+            result = await auth.post(
+                cfg.supabase_url + "/auth/v1/token",
+                params={"grant_type": "password"},
+                headers={"apikey": cfg.supabase_anon_key},
+                json={"email": cfg.admin_email, "password": cfg.admin_password},
+            )
+            result.raise_for_status()
+            admin_token = result.json()["access_token"]
+        api_url = os.environ.get("EVAL_API_URL", "http://127.0.0.1:8000")
+        async with (
+            httpx.AsyncClient(
+                base_url=api_url,
+                timeout=30,
+                headers={"Authorization": "Bearer " + reviewer["access_token"]},
+            ) as http,
+            httpx.AsyncClient(
+                base_url=api_url,
+                timeout=30,
+                headers={"Authorization": "Bearer " + admin_token},
+            ) as admin,
+        ):
             for fixture in fixtures:
-                row = await evaluate(http, fixture, cfg, baseline)
+                row = await evaluate(
+                    http, admin, reviewer["user"]["id"], fixture, cfg, baseline
+                )
                 rows.append(row)
                 print(f"{row['id']}: {row['actual']} ({row['seconds']}s)", flush=True)
                 (out / (args.split + "-runs.json")).write_text(

@@ -330,17 +330,33 @@ async def test_account_onboarding(monkeypatch):
                 headers=admin,
                 json={"factory_ids": [first]},
             )
+            payload = {
+                "factory": factories[1]["name"],
+                "title": "Unassigned case",
+                "reviewer_id": colleague_id,
+            }
+            await call("POST", "/cases", 403, headers=reviewer, json=payload)
+            await call("POST", "/admin/cases", 403, headers=reviewer, json=payload)
+            await call("POST", "/admin/cases", 422, headers=admin, json=payload)
             for item in factories[:2]:
                 case = (
                     await call(
                         "POST",
-                        "/cases",
+                        "/admin/cases",
                         201,
-                        headers=reviewer,
-                        json={"factory": item["name"], "title": "Account test"},
+                        headers=admin,
+                        json={
+                            "factory": item["name"],
+                            "title": "Account test",
+                            "reviewer_id": uid,
+                        },
                     )
                 ).json()
+                assert case["created_by"] == admin_id and case["reviewer_id"] == uid
                 cases.append(case["id"])
+                assert (
+                    await call("GET", f"/cases/{case['id']}", headers=reviewer)
+                ).json()["role"] == "reviewer"
             await call("GET", f"/cases/{cases[0]}", 404, headers=colleague)
             await call(
                 "POST",
@@ -350,6 +366,14 @@ async def test_account_onboarding(monkeypatch):
             )
             assert (await call("GET", "/cases", headers=colleague)).json() == []
             await call("GET", f"/cases/{cases[1]}", 404, headers=colleague)
+            for factory_ids, expected in [([second], 404), ([first, second], 200)]:
+                await call(
+                    "POST",
+                    f"/admin/reviewers/{uid}/factories",
+                    headers=admin,
+                    json={"factory_ids": factory_ids},
+                )
+                await call("GET", f"/cases/{cases[0]}", expected, headers=reviewer)
             await call(
                 "POST",
                 f"/cases/{cases[0]}/runs",

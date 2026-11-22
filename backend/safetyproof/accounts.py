@@ -4,7 +4,8 @@ import hashlib
 import io
 import re
 import secrets
-from datetime import UTC, datetime
+from calendar import monthrange
+from datetime import UTC, date, datetime
 from typing import Literal
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
@@ -12,8 +13,9 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from PIL import Image
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .models import CaseInput, CaseRecord
 from .platform import PlatformError
 
 EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
@@ -84,6 +86,25 @@ class AccountProfile(BaseModel):
 
 class Assignments(BaseModel):
     factory_ids: list[UUID] = Field(max_length=30)
+
+
+class AssignedCaseInput(CaseInput):
+    reviewer_id: UUID
+    inspection_on: date | None = None
+
+    @model_validator(mode="after")
+    def inspection_period(self):
+        if self.inspection_on:
+            day = self.inspection_on
+            start = day.replace(day=1)
+            end = day.replace(day=monthrange(day.year, day.month)[1])
+            self.period_start = self.period_start or start
+            self.period_end = self.period_end or end
+            if not start <= self.period_start <= day <= self.period_end <= end:
+                raise ValueError(
+                    "The case period must be in the inspection month and include the visit date."
+                )
+        return self
 
 
 class Manager(Login):
@@ -378,7 +399,43 @@ def account_router(user, db_dep):
             fields="id,case_id,title,due_on,status",
             order="due_on,id",
         )
-        return {"factory": bound, "tasks": tasks}
+        scheduled = await db.rows(
+            "cases",
+            token=u.token,
+            fields="id,title,inspection_on,reviewer_id",
+            filters={
+                "inspection_on": "not.is.null",
+                "archived": "eq.false",
+                "deleting": "eq.false",
+            },
+            order="inspection_on,id",
+        )
+        reviewer_ids = {
+            item["reviewer_id"] for item in scheduled if item["reviewer_id"]
+        }
+        reviewers = (
+            await db.rows(
+                "account_profiles",
+                fields="id,full_name,organization",
+                filters={"id": "in.(" + ",".join(sorted(reviewer_ids)) + ")"},
+            )
+            if reviewer_ids
+            else []
+        )
+        profiles = {reviewer["id"]: reviewer for reviewer in reviewers}
+        notices = [
+            {
+                "case_id": item["id"],
+                "title": item["title"],
+                "inspection_on": item["inspection_on"],
+                "reviewer_name": profiles.get(item["reviewer_id"], {}).get("full_name"),
+                "organization": profiles.get(item["reviewer_id"], {}).get(
+                    "organization"
+                ),
+            }
+            for item in scheduled
+        ]
+        return {"factory": bound, "tasks": tasks, "inspections": notices}
 
     @router.get("/reviewer/factories")
     async def assigned_factories(u=Depends(user), db=Depends(db_dep)):
@@ -687,6 +744,17 @@ def account_router(user, db_dep):
             await finish_card_cleanup(db, uid, row["id_card_path"])
         return {"updated": True}
 
+    @router.post("/admin/cases", response_model=CaseRecord, status_code=201)
+    async def create_assigned_case(
+        body: AssignedCaseInput, u=Depends(admin), db=Depends(db_dep)
+    ):
+        return await db.rpc(
+            "create_case",
+            actor_id=u.id,
+            assignee_id=str(body.reviewer_id),
+            data=body.model_dump(mode="json", exclude={"reviewer_id"}),
+        )
+
     @router.get("/admin/cases/{cid}")
     async def admin_case(cid: UUID, u=Depends(admin), db=Depends(db_dep)):
         import asyncio
@@ -694,7 +762,7 @@ def account_router(user, db_dep):
         case = await db.one(
             "cases",
             cid,
-            fields="id,title,factory,period_start,period_end,archived,deleting",
+            fields="id,title,factory,period_start,period_end,archived,deleting,reviewer_id,inspection_on",
         )
         if case.pop("deleting"):
             raise HTTPException(404, "Case unavailable.")

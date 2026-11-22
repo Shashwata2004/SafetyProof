@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import {
   api,
+  dateText,
   Dossier,
   Job,
   PageInfo,
@@ -75,10 +76,22 @@ export function Documents({
     if (!custom)
       setSelected(
         month
-          ? documentsForMonth(d.documents, d.versions, month)
+          ? documentsForMonth(
+              d.documents,
+              d.versions,
+              month,
+              d.case.inspection_on,
+            )
           : latest(d.versions),
       );
-  }, [versionKey, custom, month, d.documents, d.versions]);
+  }, [
+    versionKey,
+    custom,
+    month,
+    d.documents,
+    d.versions,
+    d.case.inspection_on,
+  ]);
   function toggle(v: Version) {
     setCustom(true);
     setSelected((prev) =>
@@ -165,7 +178,11 @@ export function Documents({
           <div className="section-head">
             <div>
               <h2>Case documents</h2>
-              <p>Select the versions to include in this review.</p>
+              <p>
+                {d.case.inspection_on
+                  ? "Upload the inspection report here. The factory manager submits CAPs, incident records and other factory evidence."
+                  : "Select the versions to include in this review."}
+              </p>
             </div>
             {writable && (
               <button onClick={() => setUpload(true)}>
@@ -181,7 +198,9 @@ export function Documents({
               </div>
               <h3>Add your first documents</h3>
               <p>
-                Upload an inspection report and the records you want to compare.
+                {d.case.inspection_on
+                  ? "Upload your inspection report to make it available to the factory manager."
+                  : "Upload an inspection report and the records you want to compare."}
               </p>
               {writable && (
                 <button onClick={() => setUpload(true)}>Choose PDF</button>
@@ -242,6 +261,7 @@ export function Documents({
             })
           )}
           {writable &&
+            !d.case.inspection_on &&
             d.case.factory === sampleCatalog.factory &&
             d.documents.length < sampleCatalog.documents.length && (
               <div className="panel-pad">
@@ -601,6 +621,92 @@ function Inspect({
   );
 }
 
+export function FactoryDocuments({
+  dossier: d,
+  token,
+  preview,
+  refresh,
+}: {
+  dossier: Dossier;
+  token: string;
+  preview: (item: Preview) => void;
+  refresh: () => Promise<void>;
+}) {
+  const [upload, setUpload] = useState(false);
+  const reports = d.versions.filter((version) =>
+    d.documents.some(
+      (doc) => doc.id === version.document_id && doc.role === "inspection",
+    ),
+  );
+  const ready = reports.some(processed);
+  const canUpload = ready && !d.case.archived && !d.case.deleting;
+  return (
+    <section className="panel">
+      <div className="section-head">
+        <div>
+          <h2>Inspection and factory documents</h2>
+          <p>
+            {ready
+              ? "Read the inspection report before preparing the CAP and supporting records."
+              : "The reviewer’s report will appear here when it is ready."}
+          </p>
+        </div>
+        {canUpload && (
+          <button className="primary" onClick={() => setUpload(true)}>
+            <Plus size={16} /> Submit factory PDF
+          </button>
+        )}
+      </div>
+      {d.versions.map((version) => {
+        const doc = d.documents.find((item) => item.id === version.document_id);
+        if (!doc) return null;
+        return (
+          <div className="admin-row" key={version.id}>
+            <div>
+              <strong>{doc.title}</strong>
+              <small>
+                {roles[doc.role]} ·{" "}
+                {version.issued_on
+                  ? dateText(version.issued_on)
+                  : "Date not entered"}{" "}
+                · Revision {version.revision}
+              </small>
+              <small>
+                {doc.role === "inspection" ? "From reviewer" : "From factory"}
+              </small>
+              {version.error && (
+                <small className="error-text">{version.error}</small>
+              )}
+            </div>
+            {processed(version) ? (
+              <button
+                onClick={() =>
+                  preview({ title: doc.title, version: version.id })
+                }
+              >
+                Open PDF
+              </button>
+            ) : (
+              <Tag>{version.status.replaceAll("_", " ")}</Tag>
+            )}
+          </div>
+        );
+      })}
+      {upload && (
+        <Upload
+          dossier={d}
+          token={token}
+          close={() => setUpload(false)}
+          done={async () => {
+            setUpload(false);
+            await refresh();
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
 function Upload({
   dossier: d,
   token,
@@ -616,10 +722,25 @@ function Upload({
     [busy, setBusy] = useState(false),
     [file, setFile] = useState<File | null>(null),
     [title, setTitle] = useState(""),
-    [role, setRole] = useState<Role>("inspection");
+    [role, setRole] = useState<Role>(
+      d.role === "manager" ? "cap" : "inspection",
+    );
   const [doc, setDoc] = useState(""),
     [stage, setStage] = useState(""),
     [attempt, setAttempt] = useState(() => crypto.randomUUID());
+  const scheduled = !!d.case.inspection_on;
+  const inspection = scheduled && d.role === "reviewer";
+  const permitted = Object.entries(roles).filter(
+    ([key]) =>
+      !scheduled ||
+      (d.role === "manager" ? key !== "inspection" : key === "inspection"),
+  );
+  const month = d.case.inspection_on?.slice(0, 7);
+  const [year, monthNumber] = (month || "").split("-").map(Number);
+  const monthEnd = month
+    ? new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10)
+    : undefined;
+  const bounds = inspection ? { min: `${month}-01`, max: monthEnd } : {};
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!file) return;
@@ -641,7 +762,11 @@ function Upload({
           issued_on: form.get("issued_on") || null,
           period_start: form.get("period_start") || null,
           period_end: form.get("period_end") || null,
-          issuer: form.get("issuer"),
+          issuer: inspection
+            ? "external"
+            : d.role === "manager"
+              ? "factory"
+              : form.get("issuer"),
           confirmed_factory: d.case.factory,
         },
       );
@@ -722,21 +847,23 @@ function Upload({
                 setDoc("");
               }}
             >
-              {Object.entries(roles).map(([k, t]) => (
+              {permitted.map(([k, t]) => (
                 <option key={k} value={k}>
                   {t}
                 </option>
               ))}
             </select>
           </label>
-          <label>
-            Issuer
-            <select name="issuer">
-              <option value="unknown">Unknown</option>
-              <option value="factory">Factory</option>
-              <option value="external">External reviewer</option>
-            </select>
-          </label>
+          {!scheduled && (
+            <label>
+              Issuer
+              <select name="issuer">
+                <option value="unknown">Unknown</option>
+                <option value="factory">Factory</option>
+                <option value="external">External reviewer</option>
+              </select>
+            </label>
+          )}
         </div>
         <label>
           Document relationship
@@ -752,22 +879,33 @@ function Upload({
           </select>
         </label>
         <label>
-          Issue date
-          <input name="issued_on" type="date" />
+          {inspection ? "Inspection date on the PDF" : "Issue date"}
+          <input
+            name="issued_on"
+            type="date"
+            required={inspection}
+            {...bounds}
+          />
         </label>
+        {inspection && (
+          <p className="hint">
+            Include a readable “Inspection date: YYYY-MM-DD” near the start of
+            the PDF. It must match the entered date and fall in {month}.
+          </p>
+        )}
         <div className="field-pair">
           <label>
             Period starts
-            <input name="period_start" type="date" />
+            <input name="period_start" type="date" {...bounds} />
           </label>
           <label>
             Period ends
-            <input name="period_end" type="date" />
+            <input name="period_end" type="date" {...bounds} />
           </label>
         </div>
         <label className="checkline">
-          <input type="checkbox" required />I confirm this permitted, synthetic
-          document belongs to {d.case.factory}.
+          <input type="checkbox" required />I confirm I have permission to
+          upload this document and it belongs to {d.case.factory}.
         </label>
         {err && <ErrorNote text={err} />}
         <div className="form-actions">

@@ -23,7 +23,6 @@ import {
   Link2,
   LogOut,
   Menu,
-  Plus,
   ShieldCheck,
 } from "lucide-react";
 import {
@@ -38,7 +37,7 @@ import {
 } from "@/lib/api";
 import { Busy, DocIcon, ErrorNote, Modal, PasswordField, Tag } from "./ui";
 import { Viewer, Preview } from "./viewer";
-import { Documents } from "./documents";
+import { Documents, FactoryDocuments } from "./documents";
 import { Analysis } from "./analysis";
 import { CaseOverview } from "./case-overview";
 import { RunHistory } from "./run-history";
@@ -75,10 +74,8 @@ function App() {
     [session, setSession] = useState<Session | null>(null);
   const [restoring, setRestoring] = useState(true),
     [mobile, setMobile] = useState(false);
-  const [dialog, setDialog] = useState<"case" | "account" | null>(null),
+  const [dialog, setDialog] = useState<"account" | null>(null),
     [preview, setPreview] = useState<Preview | null>(null);
-  const [err, setErr] = useState(""),
-    [working, setWorking] = useState(false);
   useEffect(() => {
     if (!config.data?.publishable_key) {
       if (!config.isLoading) setRestoring(false);
@@ -120,6 +117,13 @@ function App() {
     queryFn: () =>
       api<{
         factory: Factory;
+        inspections: {
+          case_id: string;
+          title: string;
+          inspection_on: string;
+          reviewer_name: string | null;
+          organization: string | null;
+        }[];
         tasks: {
           id: string;
           case_id: string;
@@ -131,8 +135,15 @@ function App() {
     enabled: isManager && !cid,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
+    refetchInterval: 30000,
   });
-  const view = isManager ? (cid ? "corrective" : "cases") : requestedView;
+  const view = isManager
+    ? cid
+      ? requestedView === "documents"
+        ? "documents"
+        : "corrective"
+      : "cases"
+    : requestedView;
   const cases = useQuery({
     queryKey: ["cases", session?.user.id],
     queryFn: () => api<Case[]>("/v1/cases", token),
@@ -144,9 +155,12 @@ function App() {
     enabled: !!role && role !== "admin" && !!cid,
     refetchOnWindowFocus: true,
     refetchInterval: (q) =>
-      q.state.data?.jobs.some((j) => ["queued", "running"].includes(j.state))
+      q.state.data?.jobs.some((j) => ["queued", "running"].includes(j.state)) ||
+      (isManager && q.state.data?.versions.some((v) => v.status === "queued"))
         ? 1700
-        : false,
+        : isManager && q.state.data?.case.inspection_on
+          ? 15000
+          : false,
   });
   function go(v: string, id = "", run = "", item = "") {
     const p = new URLSearchParams();
@@ -156,25 +170,9 @@ function App() {
     if (item) p.set("item", item);
     router.push("/" + (p.size ? "?" + p : ""));
     setMobile(false);
-    setErr("");
   }
   async function refresh() {
     await Promise.all([cases.refetch(), ...(cid ? [dossier.refetch()] : [])]);
-  }
-  async function create(data: Record<string, unknown>) {
-    setWorking(true);
-    setErr("");
-    try {
-      const c = await api<Case>("/v1/cases", token, "POST", data);
-      go("documents", c.id);
-      setDialog(null);
-      await cache.invalidateQueries({ queryKey: ["cases"] });
-      await cache.invalidateQueries({ queryKey: ["case"] });
-    } catch (e) {
-      setErr(message(e));
-    } finally {
-      setWorking(false);
-    }
   }
   async function signout() {
     await auth?.auth.signOut({ scope: "local" });
@@ -294,6 +292,9 @@ function App() {
                 {nav("Run history", "history", History, cid)}
               </>
             )}
+            {current.role === "manager" &&
+              current.case.inspection_on &&
+              nav("Documents", "documents", Files, cid)}
             {current.role !== "viewer" &&
               nav("Corrective work", "corrective", ClipboardCheck, cid)}
           </div>
@@ -333,7 +334,6 @@ function App() {
           </button>
         </header>
         <main className="content">
-          {err && <ErrorNote text={err} />}
           {view === "library" ? (
             <>
               <div className="page-head">
@@ -365,6 +365,12 @@ function App() {
                         {dateText(current.case.period_start)} –{" "}
                         {dateText(current.case.period_end)}
                       </p>
+                      {current.case.inspection_on && (
+                        <p>
+                          Inspection scheduled for{" "}
+                          {dateText(current.case.inspection_on)}
+                        </p>
+                      )}
                     </div>
                     <Tag tone={current.case.archived ? "" : "green"}>
                       {current.case.archived
@@ -382,7 +388,12 @@ function App() {
                     aria-label="Case navigation"
                   >
                     {(current.role === "manager"
-                      ? [["corrective", "Corrective work"]]
+                      ? [
+                          ...(current.case.inspection_on
+                            ? [["documents", "Documents"]]
+                            : []),
+                          ["corrective", "Corrective work"],
+                        ]
                       : [
                           ["overview", "Overview"],
                           ["documents", "Documents"],
@@ -403,7 +414,17 @@ function App() {
                       </button>
                     ))}
                   </div>
-                  {view === "corrective" || current.role === "manager" ? (
+                  {current.role === "manager" &&
+                  current.case.inspection_on &&
+                  view === "documents" ? (
+                    <FactoryDocuments
+                      key={cid}
+                      dossier={current}
+                      token={token}
+                      preview={setPreview}
+                      refresh={refresh}
+                    />
+                  ) : view === "corrective" || current.role === "manager" ? (
                     <CorrectiveWork
                       key={cid}
                       dossier={current}
@@ -479,13 +500,40 @@ function App() {
                       : "Cross-check factory safety reports against their own evidence."}
                   </p>
                 </div>
-                {role === "reviewer" && (
-                  <button className="primary" onClick={() => setDialog("case")}>
-                    <Plus size={17} />
-                    New case
-                  </button>
-                )}
               </div>
+              {isManager && (
+                <section className="panel" aria-label="Inspection notices">
+                  <div className="section-head">
+                    <h2>Inspection notices</h2>
+                    <Tag>{managerWork.data?.inspections?.length ?? 0}</Tag>
+                  </div>
+                  {managerWork.data?.inspections?.length === 0 && (
+                    <p className="empty-text">
+                      No inspections have been scheduled for your factory.
+                    </p>
+                  )}
+                  {managerWork.data?.inspections?.map((inspection) => (
+                    <button
+                      key={inspection.case_id}
+                      className="file-row"
+                      onClick={() => go("documents", inspection.case_id)}
+                    >
+                      <span className="row-main">
+                        <b>{inspection.title}</b>
+                        <small>
+                          {dateText(inspection.inspection_on)} ·{" "}
+                          {inspection.organization ||
+                            "Organization not recorded"}
+                        </small>
+                        {inspection.reviewer_name && (
+                          <small>{inspection.reviewer_name}</small>
+                        )}
+                      </span>
+                      <ChevronRight size={16} />
+                    </button>
+                  ))}
+                </section>
+              )}
               {isManager && (
                 <section className="panel">
                   <div className="section-head">
@@ -538,7 +586,14 @@ function App() {
                         className="file-row"
                         key={c.id}
                         onClick={() =>
-                          go(isManager ? "corrective" : "overview", c.id)
+                          go(
+                            isManager
+                              ? c.inspection_on
+                                ? "documents"
+                                : "corrective"
+                              : "overview",
+                            c.id,
+                          )
                         }
                       >
                         <span className="doc-icon inspection">
@@ -558,7 +613,7 @@ function App() {
                     <p className="empty-text">
                       {isManager
                         ? "Cases created for your factory will appear here."
-                        : "No review cases yet. Use New case to start your first review."}
+                        : "No cases have been assigned to you yet."}
                     </p>
                   )}
                 </section>
@@ -576,15 +631,6 @@ function App() {
       </div>
       {preview && (
         <Viewer item={preview} token={token} close={() => setPreview(null)} />
-      )}
-      {dialog === "case" && (
-        <NewCase
-          close={() => setDialog(null)}
-          create={create}
-          factories={assigned.data?.map((row) => row.factories) || []}
-          busy={working}
-          error={err}
-        />
       )}
       {dialog === "account" && (
         <Modal title="Account settings" close={() => setDialog(null)}>
@@ -753,83 +799,5 @@ function Login({
         Sign in <ArrowRight size={15} />
       </button>
     </form>
-  );
-}
-
-function NewCase({
-  factories,
-  close,
-  create,
-  busy,
-  error,
-}: {
-  close: () => void;
-  factories: Factory[];
-  create: (b: Record<string, unknown>) => Promise<void>;
-  busy: boolean;
-  error: string;
-}) {
-  return (
-    <Modal title="New review case" close={close}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const raw = Object.fromEntries(new FormData(e.currentTarget));
-          void create(
-            Object.fromEntries(
-              Object.entries(raw).map(([k, v]) => [k, v || null]),
-            ),
-          );
-        }}
-      >
-        <label>
-          Factory
-          <select name="factory" required autoFocus>
-            <option value="">
-              {factories.length
-                ? "Choose an assigned factory"
-                : "No assigned factories"}
-            </option>
-            {factories.map((factory) => (
-              <option value={factory.name} key={factory.id}>
-                {factory.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Case title
-          <input
-            name="title"
-            maxLength={160}
-            required
-            placeholder="e.g. April safety review"
-          />
-        </label>
-        <label>
-          Inspection programme <small>Optional</small>
-          <input name="programme" maxLength={120} />
-        </label>
-        <div className="field-pair">
-          <label>
-            Period starts
-            <input name="period_start" type="date" />
-          </label>
-          <label>
-            Period ends
-            <input name="period_end" type="date" />
-          </label>
-        </div>
-        {error && <ErrorNote text={error} />}
-        <div className="form-actions">
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
-          <button className="primary" disabled={busy || !factories.length}>
-            {busy ? "Creating…" : "Create case"}
-          </button>
-        </div>
-      </form>
-    </Modal>
   );
 }

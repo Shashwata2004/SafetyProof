@@ -2,8 +2,10 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 from contextlib import suppress
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -13,6 +15,33 @@ from .platform import PlatformError
 from .verify import run_verification
 
 log = logging.getLogger(__name__)
+INSPECTION_DATE = re.compile(
+    r"(?:^|[\n|])\s*(?:(?:inspection|visit|audit)\s+(?:date|on)|পরিদর্শনের?\s+তারিখ)"
+    r"\s*[:–-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{1,2}\s+[a-z]+\s+\d{4})(?!\d)",
+    re.IGNORECASE,
+)
+
+
+def check_inspection_date(pages, declared_date):
+    for page in pages:
+        text = page["text"].translate(str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789"))
+        match = INSPECTION_DATE.search(text)
+        if not match:
+            continue
+        value = " ".join(match[1].split()).replace("/", "-").replace(".", "-")
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d %B %Y", "%d %b %Y"):
+            try:
+                actual = datetime.strptime(value, fmt).date().isoformat()
+            except ValueError:
+                continue
+            if actual != declared_date:
+                raise ValueError(
+                    f"The PDF inspection date ({actual}) does not match the date entered ({declared_date})."
+                )
+            return
+    raise ValueError(
+        "No readable inspection date was found in the first eight pages. Label it 'Inspection date: YYYY-MM-DD' and upload the report again."
+    )
 
 
 async def isolated_pdf(data, vid, tessdata, offset, batch_size):
@@ -74,10 +103,18 @@ async def process(db, ai, cfg, job):
             await step("progress", {"stage": "Reading PDF and checking scan quality"})
             data = await db.download(v["object_key"])
             offset = job["completed"]
+            scheduled_inspection = False
+            if offset == 0:
+                doc = await db.one("documents", v["document_id"], fields="role")
+                if doc["role"] == "inspection":
+                    case = await db.one("cases", job["case_id"], fields="inspection_on")
+                    scheduled_inspection = bool(case["inspection_on"])
             while True:
                 parsed = await isolated_pdf(
                     data, v["id"], cfg.tessdata_prefix, offset, 8
                 )
+                if scheduled_inspection and offset == 0:
+                    check_inspection_date(parsed["pages"], v["issued_on"])
                 await db.rpc(
                     "ingest_batch", jid=job["id"], ticket=job["lease"], batch=parsed
                 )

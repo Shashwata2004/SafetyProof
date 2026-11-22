@@ -27,7 +27,9 @@ def long_pdf(title):
 
 
 @pytest.mark.asyncio
-async def test_large_pdf_checkpoints_and_case_can_exceed_one_hundred_pages(monkeypatch):
+async def test_large_pdf_checkpoints_and_case_can_exceed_one_hundred_pages(
+    monkeypatch, case_admin
+):
     accounts = ROOT / ".local/accounts.json"
     if not accounts.exists() or "127.0.0.1" not in main.cfg.supabase_url:
         pytest.skip("Configure local Supabase and demo accounts first.")
@@ -48,12 +50,17 @@ async def test_large_pdf_checkpoints_and_case_can_exceed_one_hundred_pages(monke
             json=json.loads(accounts.read_text())["reviewer"],
         )
         login.raise_for_status()
-        headers = {"Authorization": "Bearer " + login.json()["access_token"]}
+        session = login.json()
+        headers = {"Authorization": "Bearer " + session["access_token"]}
         factory = "Shaluk Threadworks Ltd."
         case = await api.post(
-            "/v1/cases",
-            headers=headers,
-            json={"factory": factory, "title": "Large PDF integration"},
+            "/v1/admin/cases",
+            headers=case_admin[1],
+            json={
+                "factory": factory,
+                "title": "Large PDF integration",
+                "reviewer_id": session["user"]["id"],
+            },
         )
         case.raise_for_status()
         cid = case.json()["id"]
@@ -110,5 +117,5 @@ async def test_large_pdf_checkpoints_and_case_can_exceed_one_hundred_pages(monke
             dossier.raise_for_status()
             assert sum(v["page_count"] for v in dossier.json()["versions"]) == 114
         finally:
-            result = await api.delete(f"/v1/cases/{cid}", headers=headers)
+            result = await api.delete(f"/v1/admin/cases/{cid}", headers=case_admin[1])
             result.raise_for_status()

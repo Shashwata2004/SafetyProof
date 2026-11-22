@@ -18,7 +18,6 @@ from .ai import Gemini
 from .config import JOB_FIELDS, settings
 from .models import (
     CapReviewInput,
-    CaseInput,
     CaseRecord,
     PublishedResult,
     ReviewInput,
@@ -136,7 +135,16 @@ async def user(
             403, "Administrator accounts use the read-only factory overview."
         )
     if role in ("viewer", "factory_manager") and request.method != "GET":
-        if role != "factory_manager" or not path.startswith(("/v1/corrective-tasks/",)):
+        manager_write = path.startswith("/v1/corrective-tasks/") or (
+            request.method == "POST"
+            and (
+                path.startswith("/v1/cases/")
+                and path.endswith("/uploads")
+                or path.startswith("/v1/document-versions/")
+                and path.endswith("/finalize")
+            )
+        )
+        if role != "factory_manager" or not manager_write:
             raise HTTPException(403, "Review access required.")
     return User(
         id=identity["id"],
@@ -208,18 +216,9 @@ async def list_cases(u: User = Depends(user), d=Depends(db)):
     return await d.rows("cases", token=u.token, order="created_at.desc")
 
 
-@app.post("/v1/cases", response_model=CaseRecord, status_code=201)
-async def create_case(body: CaseInput, u: User = Depends(user), d=Depends(db)):
-    if u.role != "reviewer":
-        raise HTTPException(403, "Review access required.")
-    assigned = await d.rows(
-        "reviewer_factories",
-        fields="factory_id,factories!inner(name)",
-        filters={"reviewer_id": "eq." + u.id, "factories.name": "eq." + body.factory},
-    )
-    if not assigned:
-        raise HTTPException(403, "Choose a factory assigned to your reviewer account.")
-    return await d.rpc("create_case", actor_id=u.id, data=body.model_dump(mode="json"))
+@app.post("/v1/cases", status_code=403)
+async def create_case(u: User = Depends(user)):
+    raise HTTPException(403, "Only an administrator can create and assign a case.")
 
 
 @app.get("/v1/cases/{cid}")
@@ -291,13 +290,23 @@ class Archive(BaseModel):
     archived: bool
 
 
+async def case_to_manage(cid, request, u, d):
+    if request.url.path.startswith("/v1/admin/"):
+        if u.role != "admin":
+            raise HTTPException(403, "Administrator access required.")
+        return await d.one("cases", cid)
+    case = await d.one("cases", cid, token=u.token)
+    if case["created_by"] != u.id:
+        raise HTTPException(403, "Only the case owner can manage this case.")
+    return case
+
+
 @app.patch("/v1/cases/{cid}")
+@app.patch("/v1/admin/cases/{cid}")
 async def archive_case(
-    cid: UUID, body: Archive, u: User = Depends(user), d=Depends(db)
+    cid: UUID, body: Archive, request: Request, u: User = Depends(user), d=Depends(db)
 ):
-    c = await d.one("cases", cid, token=u.token)
-    if c["created_by"] != u.id:
-        raise HTTPException(403, "Only the case owner can archive this case.")
+    await case_to_manage(cid, request, u, d)
     await d.call(
         "PATCH",
         "/rest/v1/cases",
@@ -309,10 +318,11 @@ async def archive_case(
 
 
 @app.delete("/v1/cases/{cid}", status_code=200)
-async def delete_case(cid: UUID, u: User = Depends(user), d=Depends(db)):
-    c = await d.one("cases", cid, token=u.token)
-    if c["created_by"] != u.id:
-        raise HTTPException(403, "Only the case owner can delete this case.")
+@app.delete("/v1/admin/cases/{cid}", status_code=200)
+async def delete_case(
+    cid: UUID, request: Request, u: User = Depends(user), d=Depends(db)
+):
+    c = await case_to_manage(cid, request, u, d)
     # The tombstone prevents new jobs and reservations while cleanup is retried.
     await d.call(
         "PATCH",
@@ -334,7 +344,7 @@ async def delete_case(cid: UUID, u: User = Depends(user), d=Depends(db)):
         "DELETE",
         "/rest/v1/cases",
         admin=True,
-        params={"id": "eq." + str(cid), "created_by": "eq." + u.id},
+        params={"id": "eq." + str(cid), "created_by": "eq." + c["created_by"]},
     )
     return {"deleted": True}
 
@@ -407,6 +417,11 @@ async def add_samples(
 ):
     c = await d.one("cases", cid, token=u.token)
     catalog = samples()
+    if c["inspection_on"]:
+        raise HTTPException(
+            403,
+            "Scheduled cases use reports uploaded by the assigned reviewer and records from the factory manager.",
+        )
     if c["factory"] != catalog["factory"]:
         raise HTTPException(
             409,

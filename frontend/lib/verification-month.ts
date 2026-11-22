@@ -72,6 +72,7 @@ export function documentsForMonth(
   documents: Pick<Doc, "id" | "role">[],
   versions: RecordVersion[],
   month: string,
+  scheduledOn?: string | null,
 ): string[] {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return [];
   const start = `${month}-01`;
@@ -106,6 +107,11 @@ export function documentsForMonth(
   );
   for (const v of context)
     if (!selected.has(v.document_id)) selected.set(v.document_id, v);
+  if (scheduledOn?.slice(0, 7) === month) {
+    // A plan submitted in response to a scheduled visit can be issued later.
+    const plans = versions.filter((v) => role.get(v.document_id) === "cap");
+    for (const v of latestReadyVersions(plans)) selected.set(v.document_id, v);
+  }
   const earlier = latestReadyVersions(
     available.filter((v) => {
       const date = lastDate(v);

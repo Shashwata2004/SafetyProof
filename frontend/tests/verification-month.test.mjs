@@ -134,3 +134,16 @@ test("overlapping periods, year boundaries and the closest prior inspection", ()
   ]);
   assert.deepEqual(select(records, "invalid"), []);
 });
+
+test("scheduled inspection includes its CAP even when the factory issues it next month", () => {
+  const report = record("report", "inspection", "2026-09-24", "2026-09-24");
+  const laterCap = record("response", "cap", null, null, {
+    issued_on: "2026-10-06",
+  });
+  const documents = [report.document, laterCap.document];
+  const versions = [report.version, laterCap.version];
+  assert.deepEqual(
+    documentsForMonth(documents, versions, "2026-09", "2026-09-24").sort(),
+    ["report-v1", "response-v1"],
+  );
+});

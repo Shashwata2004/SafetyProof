@@ -123,7 +123,7 @@ async def test_viewer():
 
 
 @pytest.mark.asyncio
-async def test_case_review_and_permissions(monkeypatch, test_viewer):
+async def test_case_review_and_permissions(monkeypatch, test_viewer, case_admin):
     credentials = ROOT / ".local/accounts.json"
     if not credentials.exists() or not main.cfg.supabase_anon_key:
         pytest.skip("Run scripts/local_setup.py against local Supabase first")
@@ -141,7 +141,7 @@ async def test_case_review_and_permissions(monkeypatch, test_viewer):
         ) as api,
         httpx.AsyncClient() as remote,
     ):
-        headers = {}
+        headers = {"admin": case_admin[1]}
         users = {}
         for role, creds in accounts.items():
             response = await remote.post(
@@ -177,10 +177,12 @@ async def test_case_review_and_permissions(monkeypatch, test_viewer):
 
         case = await call(
             "POST",
-            "/cases",
+            "/admin/cases",
+            role="admin",
             body={
                 "factory": "Shaluk Threadworks Ltd.",
                 "title": "Integration smoke",
+                "reviewer_id": users["reviewer"],
             },
             status=201,
         )
@@ -471,11 +473,11 @@ async def test_case_review_and_permissions(monkeypatch, test_viewer):
             )
 
         finally:
-            await call("DELETE", path)
+            await call("DELETE", "/admin" + path, role="admin")
 
 
 @pytest.mark.asyncio
-async def test_interrupted_job_reclaims_lease(monkeypatch):
+async def test_interrupted_job_reclaims_lease(monkeypatch, case_admin):
     credentials = ROOT / ".local/accounts.json"
     if not credentials.exists() or not main.cfg.supabase_anon_key:
         pytest.skip("Run scripts/local_setup.py against local Supabase first")
@@ -495,8 +497,9 @@ async def test_interrupted_job_reclaims_lease(monkeypatch):
         db = main.app.state.db
         case = await db.rpc(
             "create_case",
-            actor_id=actor,
-            data={"factory": "Lease test", "title": "Lease test"},
+            actor_id=case_admin[0],
+            assignee_id=actor,
+            data={"factory": "Shaluk Threadworks Ltd.", "title": "Lease test"},
         )
         cid = case["id"]
         try:
@@ -506,7 +509,7 @@ async def test_interrupted_job_reclaims_lease(monkeypatch):
                 actor_id=actor,
                 data={
                     "request_key": str(uuid4()),
-                    "confirmed_factory": "Lease test",
+                    "confirmed_factory": "Shaluk Threadworks Ltd.",
                     "filename": "test.pdf",
                     "title": "Inspection",
                     "role": "inspection",
