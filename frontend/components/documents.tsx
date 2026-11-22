@@ -1224,6 +1224,13 @@ function Upload({
             the PDF. It must match the entered date and fall in {month}.
           </p>
         )}
+        {factoryRecord && (
+          <p className="hint">
+            Dates are filled from the PDF when readable. Factory records may
+            describe events before the inspection or corrective work after it,
+            so their dates do not have to match the inspection date.
+          </p>
+        )}
         <div className="field-pair">
           <label>
             Period starts
