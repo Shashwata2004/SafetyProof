@@ -15,8 +15,6 @@ export function ProgressRing({
   color?: string;
 }) {
   const radius = 42;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - value / 100);
 
   return (
     <div className={styles.ringWrap} style={{ width: size, height: size }}>
@@ -27,7 +25,11 @@ export function ProgressRing({
           cx="50"
           cy="50"
           r={radius}
-          style={{ stroke: color, strokeDasharray: circumference, strokeDashoffset: offset }}
+          pathLength="100"
+          style={{
+            stroke: color,
+            "--ring-offset": 100 - value,
+          } as React.CSSProperties}
         />
       </svg>
       <span className={styles.ringText}>
@@ -108,8 +110,8 @@ export function TrendChart() {
         </defs>
         <line x1="8" x2="292" y1="76" y2="76" className={styles.chartGrid} />
         <line x1="8" x2="292" y1="44" y2="44" className={styles.chartGrid} />
-        <polygon points={`8,86 ${points} 292,86`} fill="url(#trend-fill)" />
-        <polyline points={points} className={styles.trendLine} />
+        <polygon points={`8,86 ${points} 292,86`} fill="url(#trend-fill)" className={styles.trendArea} />
+        <polyline points={points} pathLength="1" className={styles.trendLine} />
         {reviewTrend.map((value, index) => {
           const [x, y] = points.split(" ")[index].split(",");
           return <circle key={`${value}-${index}`} cx={x} cy={y} r="3" className={styles.trendPoint}><title>{`Day ${index + 1}: ${value}% demo coverage`}</title></circle>;

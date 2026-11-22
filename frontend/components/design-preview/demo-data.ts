@@ -21,6 +21,8 @@ export const factoryZones: Array<{
   accent: string;
   evidence: number;
   openFlags: number;
+  summary: string;
+  equipment: string[];
 }> = [
   {
     id: "storage",
@@ -31,6 +33,8 @@ export const factoryZones: Array<{
     accent: "#38bdf8",
     evidence: 2,
     openFlags: 0,
+    summary: "Illustrative intake and racking area for traceable fabric-roll handling.",
+    equipment: ["Storage racks", "Fabric rolls", "Intake pallet"],
   },
   {
     id: "cutting",
@@ -41,6 +45,8 @@ export const factoryZones: Array<{
     accent: "#22d3ee",
     evidence: 4,
     openFlags: 1,
+    summary: "Layered fabric preparation with a demo cutting workstation and operator lane.",
+    equipment: ["Cutting table", "Fabric layers", "Cutter head"],
   },
   {
     id: "sewing",
@@ -51,6 +57,8 @@ export const factoryZones: Array<{
     accent: "#34d399",
     evidence: 6,
     openFlags: 1,
+    summary: "Two-row production line showing machine spacing, seating, and thread stations.",
+    equipment: ["6 machines", "Operator chairs", "Thread spools"],
   },
   {
     id: "finishing",
@@ -61,6 +69,8 @@ export const factoryZones: Array<{
     accent: "#a78bfa",
     evidence: 3,
     openFlags: 0,
+    summary: "Illustrative pressing and garment-finishing station with controlled work space.",
+    equipment: ["Press table", "Steam unit", "Finishing tools"],
   },
   {
     id: "quality",
@@ -71,6 +81,8 @@ export const factoryZones: Array<{
     accent: "#fbbf24",
     evidence: 3,
     openFlags: 1,
+    summary: "Inspection surface and task lighting for sample-based quality review.",
+    equipment: ["Inspection table", "Task light", "Sample display"],
   },
   {
     id: "packing",
@@ -81,6 +93,8 @@ export const factoryZones: Array<{
     accent: "#fb7185",
     evidence: 2,
     openFlags: 1,
+    summary: "Organized demonstration area for folding, boxing, and dispatch preparation.",
+    equipment: ["Packing table", "Cartons", "Dispatch pallet"],
   },
 ];
 
@@ -98,6 +112,12 @@ export const evidenceCategories: Array<{
 export const reviewTrend = [42, 48, 46, 55, 61, 64, 72];
 
 export const recentEvidence = [
+  {
+    title: "Fabric intake manifest",
+    zone: "Fabric Storage",
+    status: "Supported" as EvidenceCategory,
+    time: "10:42",
+  },
   {
     title: "Emergency exit inspection",
     zone: "Finishing",

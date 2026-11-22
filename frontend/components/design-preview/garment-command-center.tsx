@@ -160,7 +160,7 @@ export function GarmentCommandCenter() {
                 <div><strong>6</strong><span>Review zones</span></div>
                 <div><strong>20</strong><span>Evidence items</span></div>
                 <div><strong>4</strong><span>Open review flags</span></div>
-                <div><strong>11</strong><span>Supported items</span></div>
+                <div><strong>12</strong><span>Supported items</span></div>
               </div>
             </div>
             <p className={styles.panelNote}><ShieldCheck aria-hidden="true" /> Coverage reflects demo evidence classification, not facility safety.</p>
@@ -220,6 +220,14 @@ export function GarmentCommandCenter() {
                 {evidenceCategories.map((item) => (
                   <div key={item.label}>
                     <span className={categoryTone[item.label]}>{item.label}</span>
+                    <div className={styles.verificationBar} aria-hidden="true">
+                      <i
+                        style={{
+                          width: `${(item.value / 20) * 100}%`,
+                          background: item.color,
+                        }}
+                      />
+                    </div>
                     <strong>{item.value}</strong>
                   </div>
                 ))}
@@ -256,7 +264,10 @@ export function GarmentCommandCenter() {
               <div><small>OPEN FLAGS</small><strong>{activeZone.openFlags}</strong><span>for review</span></div>
               <div><small>VIEW</small><strong>3D</strong><span>interactive</span></div>
             </div>
-            <p>Use the scene markers or keyboard-accessible zone controls to inspect this illustrative layout.</p>
+            <p className={styles.zoneSummary}>{activeZone.summary}</p>
+            <div className={styles.equipmentList} aria-label={`${activeZone.label} demo equipment`}>
+              {activeZone.equipment.map((item) => <span key={item}>{item}</span>)}
+            </div>
           </section>
 
           <section className={`${styles.panel} ${styles.statusPanel}`}>
@@ -289,7 +300,7 @@ export function GarmentCommandCenter() {
             </div>
           </section>
         </div>
-        <footer className={styles.previewFooter}>Development-only design preview · No production workflows, accounts, or databases are connected.</footer>
+        <footer className={styles.previewFooter}>Design-preview analytics are illustrative and isolated from production verification workflows.</footer>
       </section>
     </main>
   );

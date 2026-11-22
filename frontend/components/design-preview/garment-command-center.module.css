@@ -13,8 +13,9 @@
   --emerald: #34d399;
   min-height: 100svh;
   background:
-    radial-gradient(circle at 66% -10%, rgba(26, 187, 214, 0.14), transparent 33rem),
-    radial-gradient(circle at 22% 85%, rgba(52, 211, 153, 0.08), transparent 32rem),
+    linear-gradient(rgba(4, 12, 22, .72), rgba(4, 12, 22, .9)),
+    radial-gradient(circle at 66% -10%, rgba(26, 187, 214, 0.22), transparent 36rem),
+    radial-gradient(circle at 22% 85%, rgba(52, 211, 153, 0.11), transparent 34rem),
     var(--navy-950);
   color: var(--text);
   font-family: "DM Sans Variable", "DM Sans", system-ui, sans-serif;
@@ -132,8 +133,8 @@
   gap: 14px;
   align-items: start;
 }
-.panel { border: 1px solid var(--line); background: linear-gradient(150deg, rgba(15, 38, 57, .91), rgba(8, 23, 37, .88)); border-radius: 18px; box-shadow: inset 0 1px rgba(255,255,255,.025), 0 18px 48px rgba(0,0,0,.16); overflow: hidden; position: relative; }
-.panel::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(120deg, rgba(255,255,255,.018), transparent 34%); }
+.panel { border: 1px solid var(--line); background: linear-gradient(150deg, rgba(15, 38, 57, .92), rgba(7, 20, 34, .89)); backdrop-filter: blur(18px); border-radius: 18px; box-shadow: inset 0 1px rgba(255,255,255,.035), 0 22px 60px rgba(0,0,0,.22); overflow: hidden; position: relative; }
+.panel::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(120deg, rgba(255,255,255,.035), transparent 28%, transparent 72%, rgba(34,211,238,.018)); }
 .panelHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .panelHeading h2, .sceneHeader h2 { margin: 3px 0 0; font-size: 15px; letter-spacing: -.02em; }
 .panelHeading > svg { width: 18px; color: #6a8797; }
@@ -144,18 +145,18 @@
 .ringWrap svg { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; filter: drop-shadow(0 0 8px rgba(34,211,238,.16)); }
 .ringTrack, .ringValue { fill: none; stroke-width: 8; }
 .ringTrack { stroke: rgba(119,159,177,.14); }
-.ringValue { stroke-linecap: round; transition: stroke-dashoffset .7s ease; }
+.ringValue { stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: var(--ring-offset); animation: ringDraw .8s cubic-bezier(.2,.8,.2,1) both; }
 .ringText { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
 .ringText strong { font-size: 22px; line-height: 1; letter-spacing: -.05em; }
 .ringText small { margin-top: 4px; color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .1em; }
 .metricGrid { flex: 1; min-width: 100px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.metricGrid div { min-height: 62px; padding: 10px; border: 1px solid rgba(130,175,193,.11); border-radius: 11px; background: rgba(255,255,255,.022); display: grid; align-content: center; }
+.metricGrid div { min-height: 62px; padding: 10px; border: 1px solid rgba(130,175,193,.12); border-radius: 11px; background: linear-gradient(145deg, rgba(255,255,255,.035), rgba(34,211,238,.018)); display: grid; align-content: center; box-shadow: inset 0 1px rgba(255,255,255,.025); }
 .metricGrid strong { font-size: 19px; color: #dffaff; }
 .metricGrid span { color: var(--muted); font-size: 8px; line-height: 1.25; }
 .panelNote { margin: 0; padding-top: 13px; border-top: 1px solid var(--line); color: #819baa; font-size: 9px; line-height: 1.45; display: flex; gap: 7px; }
 .panelNote svg { width: 14px; flex: 0 0 auto; color: var(--emerald); }
 
-.scenePanel { grid-area: scene; min-height: 718px; display: flex; flex-direction: column; }
+.scenePanel { grid-area: scene; min-height: 718px; display: flex; flex-direction: column; border-color: rgba(62, 205, 226, .25); box-shadow: inset 0 1px rgba(255,255,255,.04), 0 26px 75px rgba(0,0,0,.28), 0 0 45px rgba(34,211,238,.05); }
 .sceneHeader { min-height: 76px; padding: 15px 17px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--line); }
 .sceneActions { display: flex; align-items: center; gap: 8px; }
 .activeZone { color: #bdeef3; font-size: 10px; display: flex; align-items: center; gap: 5px; }
@@ -163,7 +164,8 @@
 .sceneActions button { height: 35px; padding: 0 10px; border: 1px solid var(--line-bright); border-radius: 9px; background: rgba(34,211,238,.07); color: #bfeff5; font-size: 9px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; }
 .sceneActions button svg { width: 13px; }
 .canvasFrame { min-height: 570px; flex: 1; position: relative; background: radial-gradient(circle at 53% 38%, #102f44 0, #071321 62%); overflow: hidden; }
-.canvasFrame::after { content: ""; pointer-events: none; position: absolute; inset: 0; box-shadow: inset 0 0 60px rgba(0,0,0,.36); }
+.canvasFrame::before { content: ""; pointer-events: none; position: absolute; z-index: 2; inset: 0; background-image: linear-gradient(rgba(87,205,224,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(87,205,224,.025) 1px, transparent 1px); background-size: 34px 34px; mask-image: linear-gradient(to bottom, rgba(0,0,0,.2), transparent 55%); }
+.canvasFrame::after { content: ""; pointer-events: none; position: absolute; inset: 0; box-shadow: inset 0 0 80px rgba(0,0,0,.46), inset 0 -40px 70px rgba(3,10,18,.35); }
 .canvasFrame canvas { display: block; }
 .sceneHint { position: absolute; z-index: 5; left: 14px; bottom: 13px; border: 1px solid rgba(139,181,201,.15); border-radius: 8px; background: rgba(4,13,22,.74); backdrop-filter: blur(8px); color: #89a7b5; font-size: 8px; padding: 7px 9px; display: flex; align-items: center; gap: 6px; }
 .sceneHint svg { width: 12px; }
@@ -188,10 +190,12 @@
 .compactPanel { padding: 16px; }
 .compactPanel > .demoTag { display: block; margin-top: 12px; }
 .verificationList { display: grid; margin-top: 12px; }
-.verificationList > div { min-height: 36px; border-bottom: 1px solid rgba(139,181,201,.1); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.verificationList > div { min-height: 42px; border-bottom: 1px solid rgba(139,181,201,.1); display: grid; grid-template-columns: minmax(92px, auto) minmax(34px, 1fr) 18px; align-items: center; gap: 8px; }
 .verificationList > div:last-child { border: 0; }
 .verificationList span, .activityList > div > span:nth-child(3) { width: fit-content; padding: 4px 7px; border-radius: 6px; font-size: 8px; font-weight: 750; }
 .verificationList strong { font-size: 13px; }
+.verificationBar { height: 3px; border-radius: 99px; background: rgba(139,181,201,.1); overflow: hidden; }
+.verificationBar i { display: block; height: 100%; border-radius: inherit; box-shadow: 0 0 8px currentColor; animation: barReveal .7s cubic-bezier(.2,.8,.2,1) both; transform-origin: left; }
 .toneSupported { color: #7ce7bd; background: rgba(52,211,153,.1); }
 .toneUnresolved { color: #fbd375; background: rgba(251,191,36,.11); }
 .toneContradictory { color: #ff9bac; background: rgba(251,113,133,.11); }
@@ -210,7 +214,8 @@
 .trendWrap { margin-top: 8px; }
 .trendWrap svg { width: 100%; height: auto; overflow: visible; }
 .chartGrid { stroke: rgba(139,181,201,.1); stroke-dasharray: 3 4; }
-.trendLine { fill: none; stroke: var(--cyan); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px rgba(34,211,238,.55)); }
+.trendLine { fill: none; stroke: var(--cyan); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px rgba(34,211,238,.55)); stroke-dasharray: 1; stroke-dashoffset: 1; animation: lineDraw .9s ease-out forwards; }
+.trendArea { animation: areaReveal .9s ease-out both; }
 .trendPoint { fill: #071321; stroke: var(--cyan); stroke-width: 2; }
 .chartAxis { display: flex; justify-content: space-between; color: #587482; font-size: 7px; }
 .trendSummary { margin-top: 9px; display: flex; align-items: baseline; gap: 6px; }
@@ -224,7 +229,9 @@
 .glanceStats small { color: #668493; font-size: 6px; letter-spacing: .1em; }
 .glanceStats strong { margin: 3px 0 1px; font-size: 18px; }
 .glanceStats span { color: var(--muted); font-size: 7px; }
-.glancePanel p { margin: 0; color: #8098a6; font-size: 9px; line-height: 1.5; }
+.glancePanel .zoneSummary { margin: 0; color: #93acb9; font-size: 9px; line-height: 1.55; }
+.equipmentList { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 5px; }
+.equipmentList span { padding: 5px 7px; border: 1px solid rgba(34,211,238,.15); border-radius: 7px; background: rgba(34,211,238,.045); color: #93cbd3; font-size: 7px; font-weight: 700; letter-spacing: .02em; }
 .statusPanel { grid-area: status; padding: 18px; min-height: 171px; }
 .miniRings { margin: 13px 0 8px; display: flex; justify-content: space-around; gap: 8px; }
 .miniRings .ringText strong { font-size: 16px; }
@@ -242,6 +249,10 @@
 .previewFooter { padding: 0 32px 22px; color: #506b79; font-size: 9px; text-align: center; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes ringDraw { from { stroke-dashoffset: 100; } }
+@keyframes lineDraw { to { stroke-dashoffset: 0; } }
+@keyframes areaReveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes barReveal { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
 @media (max-width: 1320px) {
   .dashboardGrid { grid-template-columns: minmax(210px, .68fr) minmax(500px, 1.75fr) minmax(250px, .82fr); }
