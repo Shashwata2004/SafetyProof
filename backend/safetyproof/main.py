@@ -18,6 +18,7 @@ from .accounts import account_router
 from .ai import Gemini
 from .config import JOB_FIELDS, settings
 from .document_metadata import extract_metadata
+from .document_validation import check_inspection_content
 from .models import (
     CapReviewInput,
     CaseRecord,
@@ -400,6 +401,25 @@ async def inspect_upload(
         getattr(file, "filename", "document.pdf") or "document.pdf",
         case.get("inspection_on"),
     )
+    if u.role == "reviewer" and case.get("inspection_on"):
+        fields.update(
+            await check_inspection_content(
+                parsed["pages"],
+                getattr(file, "filename", "document.pdf") or "document.pdf",
+                case["factory"],
+                case["inspection_on"],
+                request.app.state.ai,
+            )
+        )
+    else:
+        fields.update(
+            {
+                "content_check": "not_applicable",
+                "content_reason": None,
+                "content_indicators": [],
+                "content_model": None,
+            }
+        )
     return fields
 
 

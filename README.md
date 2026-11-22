@@ -22,6 +22,8 @@ done
 
 Set `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in the root `.env` from the **SafetyProof AI** project in Supabase. Add `GEMINI_API_KEY` there too. The root `.env` is ignored by Git; keep it private. Local and Vercel sessions use the same accounts, cases and documents. Choose **Sign in as Reviewer / Auditor** and sign in with an active reviewer account. The document library is available after sign-in.
 
+For scheduled reviewer uploads, the configured `GEMINI_API_KEY` also powers a content screen after OCR. Gemini checks whether the readable text is substantively an inspection report; it does not authenticate the report or verify that its claims are true. A clear mismatch, ambiguous content, or provider failure blocks the upload with a reason. If OCR cannot read the PDF, the reviewer can enter metadata manually and continue. The key stays in the backend `.env` and is never sent to the browser. Without a Gemini key, the app falls back to its basic OCR document-role check.
+
 Add a free-tier project key as `GEMINI_API_KEY` in the root `.env`. Before starting the backend, check generation and embeddings with `PYTHONPATH=backend python scripts/check_models.py`. Set `MIN_REQUEST_INTERVAL` according to the project's quota. Start the services in separate terminals.
 
 ```bash

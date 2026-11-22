@@ -729,6 +729,17 @@ function Upload({
     warnings: string[];
     pages_checked: number;
     readable_pages: number;
+    content_check:
+      | "valid"
+      | "invalid"
+      | "uncertain"
+      | "unavailable"
+      | "not_configured"
+      | "unreadable"
+      | "not_applicable";
+    content_reason: string | null;
+    content_indicators: string[];
+    content_model: string | null;
   };
   const [err, setErr] = useState(""),
     [busy, setBusy] = useState(false),
@@ -749,16 +760,30 @@ function Upload({
     [attempt, setAttempt] = useState(() => crypto.randomUUID());
   const scheduled = !!d.case.inspection_on;
   const inspection = scheduled && d.role === "reviewer";
+  const semanticCheckRan =
+    !!extracted &&
+    ["valid", "invalid", "uncertain", "unavailable"].includes(
+      extracted.content_check,
+    );
   const invalidInspectionPdf =
     inspection &&
     !!extracted &&
-    extracted.readable_pages > 0 &&
-    extracted.role !== "inspection";
-  const invalidInspectionMessage = extracted
-    ? extracted.role === "other"
-      ? "Invalid document: the readable PDF could not be identified as an inspection report. Choose an inspection report PDF."
-      : `Invalid document: this PDF was identified as “${roles[extracted.role]}”. Reviewers can upload inspection reports only.`
-    : "";
+    (semanticCheckRan
+      ? extracted.content_check !== "valid"
+      : extracted.readable_pages > 0 && extracted.role !== "inspection");
+  const semanticFailureMessage =
+    extracted?.content_check === "unavailable"
+      ? "Gemini could not complete the content check. Check the server configuration and retry."
+      : extracted?.content_check === "uncertain"
+        ? `The report content could not be confirmed: ${extracted.content_reason || "the text is too ambiguous or incomplete."} Choose a clearer inspection report PDF.`
+        : `Invalid document: ${extracted?.content_reason || "the content is not an inspection report."} Choose a relevant inspection report PDF.`;
+  const invalidInspectionMessage = !extracted
+    ? ""
+    : semanticCheckRan
+      ? semanticFailureMessage
+      : extracted.role === "other"
+        ? "Invalid document: the readable PDF could not be identified as an inspection report. Choose an inspection report PDF."
+        : `Invalid document: this PDF was identified as “${roles[extracted.role]}”. Reviewers can upload inspection reports only.`;
   const permitted = Object.entries(roles).filter(
     ([key]) =>
       !scheduled ||
@@ -929,6 +954,25 @@ function Upload({
             Read {extracted.readable_pages} of {extracted.pages_checked} pages.
             Check the extracted fields before uploading; missing fields can be
             entered manually.
+          </p>
+        )}
+        {inspection && extracted?.content_check === "valid" && (
+          <p className="hint" role="status">
+            Content check passed: {extracted.content_reason} This checks the
+            document type, not whether its claims are true.
+          </p>
+        )}
+        {inspection && extracted?.content_check === "not_configured" && (
+          <p className="callout" role="status">
+            Gemini content screening is not configured. Only basic OCR document
+            type checks are active.
+          </p>
+        )}
+        {inspection && extracted?.content_check === "unreadable" && (
+          <p className="callout" role="status">
+            The PDF text could not be read, so its content could not be checked.
+            Enter the fields manually and make sure this is the inspection
+            report.
           </p>
         )}
         {extracted?.warnings.map((warning) => (
