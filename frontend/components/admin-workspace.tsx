@@ -91,7 +91,6 @@ export function AdminWorkspace({
   const [addingFactory, setAddingFactory] = useState(false);
   const [factoryName, setFactoryName] = useState("");
   const [factoryAddress, setFactoryAddress] = useState("");
-  const [addingCase, setAddingCase] = useState(false);
   const [assigneeId, setAssigneeId] = useState("");
   const [assignmentFactoryId, setAssignmentFactoryId] = useState("");
   const [assignmentSaved, setAssignmentSaved] = useState(false);
@@ -218,6 +217,27 @@ export function AdminWorkspace({
     });
   }
 
+  async function createCase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!assignmentFactory || !assignee || !hasAssignment) return;
+    const fields = Object.fromEntries(new FormData(event.currentTarget));
+    await perform(async () => {
+      const created = await api<{ id: string }>(
+        "/v1/admin/cases",
+        token,
+        "POST",
+        {
+          ...fields,
+          factory: assignmentFactory.name,
+          reviewer_id: assignee.id,
+          programme: fields.programme || null,
+        },
+      );
+      setCaseId(created.id);
+      await factories.refetch();
+    });
+  }
+
   return (
     <>
       <header className="topbar">
@@ -248,7 +268,7 @@ export function AdminWorkspace({
             </button>
           ))}
         </nav>
-        {error && !add && !deactivate && !addingCase && !addingFactory && (
+        {error && !add && !deactivate && !addingFactory && (
           <ErrorNote text={error} />
         )}
         {view === "factories" && (
@@ -438,15 +458,6 @@ export function AdminWorkspace({
                   reviewer.
                 </p>
               </div>
-              <button
-                className="primary"
-                onClick={() => {
-                  setError("");
-                  setAddingCase(true);
-                }}
-              >
-                New case
-              </button>
             </div>
             <div className="panel-pad admin-form">
               {reviewers.isLoading && <Busy />}
@@ -524,6 +535,44 @@ export function AdminWorkspace({
                   {assignmentSaved && <p role="status">Assignment updated.</p>}
                 </div>
               )}
+              {assignmentFactory && assignee && (
+                <form className="admin-form" onSubmit={createCase}>
+                  <h2>Schedule inspection</h2>
+                  <label>
+                    Case title
+                    <input
+                      name="title"
+                      maxLength={160}
+                      required
+                      placeholder="e.g. April safety review"
+                    />
+                  </label>
+                  <label>
+                    Inspection programme <small>Optional</small>
+                    <input name="programme" maxLength={120} />
+                  </label>
+                  <label>
+                    Inspection date
+                    <input name="inspection_on" type="date" required />
+                  </label>
+                  <p className="hint">
+                    Scheduling creates the review case and adds a notice with
+                    this date to the factory manager’s dashboard.
+                  </p>
+                  {!hasAssignment && (
+                    <p className="hint">
+                      Assign this reviewer to the selected factory before
+                      scheduling the inspection.
+                    </p>
+                  )}
+                  <button
+                    className="primary"
+                    disabled={busy || !hasAssignment}
+                  >
+                    {busy ? "Scheduling…" : "Assign case and notify factory"}
+                  </button>
+                </form>
+              )}
             </div>
           </section>
         )}
@@ -583,28 +632,6 @@ export function AdminWorkspace({
           </>
         )}
       </main>
-      {addingCase && (
-        <NewCase
-          factories={factories.data || []}
-          reviewers={reviewers.data || []}
-          close={() => setAddingCase(false)}
-          busy={busy}
-          error={error || (reviewers.error ? message(reviewers.error) : "")}
-          create={(data) =>
-            perform(async () => {
-              const created = await api<{ id: string }>(
-                "/v1/admin/cases",
-                token,
-                "POST",
-                data,
-              );
-              setAddingCase(false);
-              setCaseId(created.id);
-              await factories.refetch();
-            })
-          }
-        />
-      )}
       {caseId && (
         <Modal title="Case conditions" close={() => setCaseId("")}>
           {details.isLoading && <Busy />}
@@ -931,119 +958,6 @@ function ManagerDetail({
         </div>
       )}
       {error && <ErrorNote text={error} />}
-    </Modal>
-  );
-}
-
-function NewCase({
-  factories,
-  reviewers,
-  close,
-  create,
-  busy,
-  error,
-}: {
-  close: () => void;
-  factories: Factory[];
-  reviewers: Reviewer[];
-  create: (b: Record<string, unknown>) => Promise<void>;
-  busy: boolean;
-  error: string;
-}) {
-  const [factoryId, setFactoryId] = useState("");
-  const factory = factories.find((item) => item.id === factoryId);
-  const eligible = reviewers.filter(
-    (row) =>
-      row.status === "active" &&
-      row.reviewer_factories.some(({ factory_id }) => factory_id === factoryId),
-  );
-  return (
-    <Modal title="New review case" close={close}>
-      <form
-        className="admin-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const raw = Object.fromEntries(new FormData(e.currentTarget));
-          void create(
-            Object.fromEntries(
-              Object.entries({ ...raw, factory: factory?.name }).map(
-                ([k, v]) => [k, v || null],
-              ),
-            ),
-          );
-        }}
-      >
-        <label>
-          Factory
-          <select
-            aria-label="Factory"
-            value={factoryId}
-            onChange={(event) => setFactoryId(event.target.value)}
-            required
-            autoFocus
-          >
-            <option value="">Choose a factory</option>
-            {factories.map((factory) => (
-              <option value={factory.id} key={factory.id}>
-                {factory.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Reviewer
-          <select
-            key={factoryId}
-            name="reviewer_id"
-            aria-label="Reviewer"
-            required
-            disabled={!eligible.length}
-          >
-            <option value="">Choose a reviewer</option>
-            {eligible.map((row) => (
-              <option value={row.id} key={row.id}>
-                {row.full_name} · {row.email}
-              </option>
-            ))}
-          </select>
-        </label>
-        {factory && !eligible.length && (
-          <p className="hint">
-            No active reviewer is assigned to this factory. Add one under
-            Factory assignments.
-          </p>
-        )}
-        <label>
-          Case title
-          <input
-            name="title"
-            maxLength={160}
-            required
-            placeholder="e.g. April safety review"
-          />
-        </label>
-        <label>
-          Inspection programme <small>Optional</small>
-          <input name="programme" maxLength={120} />
-        </label>
-        <label>
-          Inspection date
-          <input name="inspection_on" type="date" required />
-        </label>
-        <p className="hint">
-          The case covers the inspection month. Scheduling adds a notice to the
-          factory manager’s dashboard.
-        </p>
-        {error && <ErrorNote text={error} />}
-        <div className="form-actions">
-          <button type="button" onClick={close}>
-            Cancel
-          </button>
-          <button className="primary" disabled={busy || !eligible.length}>
-            {busy ? "Creating…" : "Assign case and notify factory"}
-          </button>
-        </div>
-      </form>
     </Modal>
   );
 }
