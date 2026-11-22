@@ -140,8 +140,8 @@ export function GarmentCommandCenter() {
             <div className={styles.overviewContent}>
               <ProgressRing value={72} label="coverage" size={124} />
               <div className={styles.metricGrid}>
-                <div><strong>5</strong><span>Review zones</span></div>
-                <div><strong>18</strong><span>Evidence items</span></div>
+                <div><strong>6</strong><span>Review zones</span></div>
+                <div><strong>20</strong><span>Evidence items</span></div>
                 <div><strong>4</strong><span>Open review flags</span></div>
                 <div><strong>11</strong><span>Supported items</span></div>
               </div>

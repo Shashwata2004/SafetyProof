@@ -1,4 +1,5 @@
 export type ZoneId =
+  | "storage"
   | "cutting"
   | "sewing"
   | "finishing"
@@ -21,6 +22,16 @@ export const factoryZones: Array<{
   evidence: number;
   openFlags: number;
 }> = [
+  {
+    id: "storage",
+    label: "Fabric Storage",
+    shortLabel: "Storage",
+    position: [-5.25, 0.4, 2.8],
+    camera: [-1.8, 6.8, 11.6],
+    accent: "#38bdf8",
+    evidence: 2,
+    openFlags: 0,
+  },
   {
     id: "cutting",
     label: "Fabric Cutting",
@@ -55,7 +66,7 @@ export const factoryZones: Array<{
     id: "quality",
     label: "Quality Check",
     shortLabel: "Quality",
-    position: [3.9, 0.4, 2.4],
+    position: [4.65, 0.4, 2.45],
     camera: [7.6, 6.4, 9.7],
     accent: "#fbbf24",
     evidence: 3,
@@ -65,8 +76,8 @@ export const factoryZones: Array<{
     id: "packing",
     label: "Packing & Dispatch",
     shortLabel: "Packing",
-    position: [-4.5, 0.4, 3.1],
-    camera: [-1.4, 6.3, 11.2],
+    position: [0.35, 0.4, 3.15],
+    camera: [4.7, 6.2, 11.4],
     accent: "#fb7185",
     evidence: 2,
     openFlags: 1,
@@ -78,10 +89,10 @@ export const evidenceCategories: Array<{
   value: number;
   color: string;
 }> = [
-  { label: "Supported", value: 11, color: "#34d399" },
+  { label: "Supported", value: 12, color: "#34d399" },
   { label: "Unresolved", value: 3, color: "#fbbf24" },
   { label: "Contradictory", value: 1, color: "#fb7185" },
-  { label: "Insufficient Evidence", value: 3, color: "#8b9bb4" },
+  { label: "Insufficient Evidence", value: 4, color: "#8b9bb4" },
 ];
 
 export const reviewTrend = [42, 48, 46, 55, 61, 64, 72];
