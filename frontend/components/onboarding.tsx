@@ -188,6 +188,11 @@ export function ManagerSignup() {
   const [factories, setFactories] = useState<Factory[] | null>(null);
   const [factoryId, setFactoryId] = useState("");
   const [address, setAddress] = useState("");
+  const [idCardNumber, setIdCardNumber] = useState("");
+  const [cardReadState, setCardReadState] = useState<
+    "idle" | "reading" | "detected" | "not-detected" | "failed"
+  >("idle");
+  const cardReadRequest = useRef(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -210,6 +215,46 @@ export function ManagerSignup() {
       active = false;
     };
   }, [factoryId]);
+
+  async function readIdCardNumber(file: File | null) {
+    const requestId = ++cardReadRequest.current;
+    setIdCardNumber("");
+    setError("");
+    if (!file) {
+      setCardReadState("idle");
+      return;
+    }
+    if (
+      file.size < 1 ||
+      file.size > 5 * 1024 * 1024 ||
+      !["image/jpeg", "image/png", "application/pdf"].includes(file.type)
+    ) {
+      setCardReadState("idle");
+      return;
+    }
+    setCardReadState("reading");
+    try {
+      const form = new FormData();
+      form.append("office_card", file);
+      const response = await fetch(
+        apiBase() + "/v1/signup/factory-manager/read-id-number",
+        { method: "POST", body: form, cache: "no-store" },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error("Could not read the ID card.");
+      }
+      if (requestId !== cardReadRequest.current) return;
+      if (typeof data.number === "string" && data.number) {
+        setIdCardNumber(data.number);
+        setCardReadState("detected");
+      } else {
+        setCardReadState("not-detected");
+      }
+    } catch {
+      if (requestId === cardReadRequest.current) setCardReadState("failed");
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -347,13 +392,32 @@ export function ManagerSignup() {
               type="file"
               accept="image/jpeg,image/png,application/pdf"
               required
+              onChange={(event) =>
+                void readIdCardNumber(event.currentTarget.files?.[0] ?? null)
+              }
             />
           </label>
           <p className="hint">JPG, PNG or PDF, up to 5 MB.</p>
           <label>
             Office ID card number (optional)
-            <input name="id_card_number" maxLength={120} />
+            <input
+              name="id_card_number"
+              maxLength={120}
+              value={idCardNumber}
+              onChange={(event) => setIdCardNumber(event.target.value)}
+            />
           </label>
+          {cardReadState !== "idle" && (
+            <p className="hint" aria-live="polite">
+              {cardReadState === "reading"
+                ? "Reading the ID card number…"
+                : cardReadState === "detected"
+                  ? "Card number detected and filled. Check it before submitting."
+                  : cardReadState === "not-detected"
+                    ? "Could not detect the card number. You can enter it manually."
+                    : "Could not read this card. You can enter the number manually."}
+            </p>
+          )}
           <label>
             Factory license or BGMEA/BKMEA membership number (optional)
             <input name="membership_number" maxLength={120} />
@@ -373,9 +437,18 @@ export function ManagerSignup() {
           {error && <ErrorNote text={error} />}
           <button
             className="primary"
-            disabled={busy || !factories?.length || !factoryId}
+            disabled={
+              busy ||
+              cardReadState === "reading" ||
+              !factories?.length ||
+              !factoryId
+            }
           >
-            {busy ? "Submitting…" : "Submit application"}
+            {busy
+              ? "Submitting…"
+              : cardReadState === "reading"
+                ? "Reading ID card…"
+                : "Submit application"}
           </button>
         </form>
       </section>

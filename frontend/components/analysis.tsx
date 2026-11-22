@@ -411,7 +411,7 @@ function Detail({
             <div className="review-note" key={ev.id}>
               <b>{decisions[ev.action as Action] || ev.action}</b>
               <small>
-                {dateText(ev.created_at)} · {ev.actor}
+                {dateText(ev.created_at)} · {ev.actor || "Deleted account"}
               </small>
               {ev.comment && <p>{ev.comment}</p>}
             </div>
@@ -505,7 +505,7 @@ function PrintSheet({
           </p>
           {r.reviews.map((e) => (
             <p key={e.id}>
-              {e.action} · {dateText(e.created_at)} · {e.actor} {e.comment}
+              {e.action} · {dateText(e.created_at)} · {e.actor || "Deleted account"} {e.comment}
             </p>
           ))}
         </section>

@@ -156,9 +156,10 @@ class Assessment(BaseModel):
 
 class CaseRecord(CaseInput):
     id: UUID
-    created_by: UUID
+    created_by: UUID | None
     reviewer_id: UUID | None = None
     inspection_on: date | None = None
+    manager_notified_at: str | None = None
     created_at: str
     archived: bool
     deleting: bool
@@ -179,7 +180,7 @@ class RunTicket(BaseModel):
 class ReviewEvent(BaseModel):
     id: UUID
     result_id: UUID
-    actor: UUID
+    actor: UUID | None
     action: str
     comment: str
     created_at: str

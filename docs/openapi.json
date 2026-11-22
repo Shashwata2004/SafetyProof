@@ -160,6 +160,42 @@
         ]
       }
     },
+    "/v1/signup/factory-manager/read-id-number": {
+      "post": {
+        "summary": "Read Manager Id Number",
+        "operationId": "read_manager_id_number_v1_signup_factory_manager_read_id_number_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_read_manager_id_number_v1_signup_factory_manager_read_id_number_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/signup/factory-manager/upload": {
       "post": {
         "summary": "Reserve Card",
@@ -569,6 +605,48 @@
         ]
       }
     },
+    "/v1/admin/manager-applications/unseen-count": {
+      "get": {
+        "summary": "Unseen Manager Applications",
+        "operationId": "unseen_manager_applications_v1_admin_manager_applications_unseen_count_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/admin/manager-applications/mark-seen": {
+      "post": {
+        "summary": "Mark Manager Applications Seen",
+        "operationId": "mark_manager_applications_seen_v1_admin_manager_applications_mark_seen_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/v1/admin/manager-applications/{uid}": {
       "get": {
         "summary": "Application",
@@ -724,7 +802,8 @@
               "enum": [
                 "approve",
                 "reject",
-                "deactivate"
+                "deactivate",
+                "reactivate"
               ],
               "type": "string",
               "title": "Choice"
@@ -741,6 +820,49 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/accounts/{uid}": {
+      "delete": {
+        "summary": "Delete Deactivated Account",
+        "operationId": "delete_deactivated_account_v1_admin_accounts__uid__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Uid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -945,6 +1067,66 @@
       "get": {
         "summary": "Factory Overview",
         "operationId": "factory_overview_v1_admin_factories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create Factory",
+        "operationId": "create_factory_v1_admin_factories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactoryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/admin/scheduled-inspections": {
+      "get": {
+        "summary": "Scheduled Inspections",
+        "operationId": "scheduled_inspections_v1_admin_scheduled_inspections_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2504,6 +2686,28 @@
             ],
             "title": "Role Type"
           },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "job_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Title"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -2524,6 +2728,40 @@
               }
             ],
             "title": "Factory Id"
+          },
+          "id_card_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Card Number"
+          },
+          "membership_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership Number"
+          },
+          "consent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent At"
           }
         },
         "type": "object",
@@ -2648,6 +2886,20 @@
         ],
         "title": "Assignments"
       },
+      "Body_read_manager_id_number_v1_signup_factory_manager_read_id_number_post": {
+        "properties": {
+          "office_card": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Office Card"
+          }
+        },
+        "type": "object",
+        "required": [
+          "office_card"
+        ],
+        "title": "Body_read_manager_id_number_v1_signup_factory_manager_read_id_number_post"
+      },
       "CapReviewInput": {
         "properties": {
           "finding_id": {
@@ -2739,8 +2991,15 @@
             "title": "Id"
           },
           "created_by": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Created By"
           },
           "reviewer_id": {
@@ -2766,6 +3025,17 @@
               }
             ],
             "title": "Inspection On"
+          },
+          "manager_notified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manager Notified At"
           },
           "created_at": {
             "type": "string",
@@ -2925,6 +3195,28 @@
           "method"
         ],
         "title": "EvidenceRef"
+      },
+      "FactoryInput": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "address": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Address"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "address"
+        ],
+        "title": "FactoryInput"
       },
       "HTTPValidationError": {
         "properties": {
@@ -3128,8 +3420,15 @@
             "title": "Result Id"
           },
           "actor": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Actor"
           },
           "action": {
