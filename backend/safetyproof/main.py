@@ -365,7 +365,7 @@ async def reserve_upload(
             )
         if u.role == "factory_manager" and body.role == "inspection":
             raise HTTPException(
-                422, "Factory managers cannot upload reviewer inspection reports."
+                403, "Factory managers cannot upload reviewer inspection reports."
             )
     version = await d.rpc(
         "reserve", cid=str(cid), actor_id=u.id, data=body.model_dump(mode="json")
