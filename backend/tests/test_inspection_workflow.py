@@ -30,7 +30,7 @@ def make_pdf(line):
 async def test_scheduled_report_and_factory_submission(monkeypatch, case_admin):
     account_file = ROOT / ".local/accounts.json"
     if not account_file.exists():
-        pytest.skip("Run scripts/local_setup.py against local Supabase first.")
+        pytest.skip("Configure the Supabase test project before running this test.")
     cfg = main.cfg.model_copy(update={"worker_enabled": False})
     monkeypatch.setattr(main, "cfg", cfg)
     credentials = json.loads(account_file.read_text())

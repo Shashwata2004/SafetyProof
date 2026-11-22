@@ -6,7 +6,7 @@ Live app: https://safetyproof.vercel.app · API: https://safetyproof-api.vercel.
 
 ## Local setup
 
-Requires Docker, Python 3.12, Node 22 and npm. Run from the repository root.
+Requires Python 3.12, Node 22 and npm. Local development uses the same hosted Supabase project as Vercel; there is no separate local database. Run from the repository root.
 
 ```bash
 python3 -m venv .venv
@@ -14,16 +14,13 @@ python3 -m venv .venv
 pip install -r backend/requirements-dev.lock
 npm --prefix frontend ci
 
-npx --yes supabase@2.98.2 start --exclude studio,imgproxy,realtime,postgres-meta,logflare,vector,edge-runtime,supavisor,mailpit
 mkdir -p .local/tessdata
 for lang in eng ben; do
   curl -fsS "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/$lang.traineddata" -o ".local/tessdata/$lang.traineddata"
 done
-npx --yes supabase@2.98.2 migration up --local
-python scripts/local_setup.py
 ```
 
-The setup script records the generated local reviewer, viewer and Factory Manager passwords in `.local/accounts.json`. Both this file and the root `.env` are ignored by Git. Keep the local Supabase stack on a trusted network. Choose **Sign in as Reviewer / Auditor** and use the reviewer account. Create a Shaluk case and use **Load sample documents** in its Documents tab. The document library is available after sign-in.
+Set `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in the root `.env` from the **SafetyProof AI** project in Supabase. Add `GEMINI_API_KEY` there too. The root `.env` is ignored by Git; keep it private. Local and Vercel sessions use the same accounts, cases and documents. Choose **Sign in as Reviewer / Auditor** and sign in with an active reviewer account. The document library is available after sign-in.
 
 Add a free-tier project key as `GEMINI_API_KEY` in the root `.env`. Before starting the backend, check generation and embeddings with `PYTHONPATH=backend python scripts/check_models.py`. Set `MIN_REQUEST_INTERVAL` according to the project's quota. Start the services in separate terminals.
 
@@ -32,7 +29,7 @@ PYTHONPATH=backend .venv/bin/uvicorn safetyproof.main:app --host 127.0.0.1 --por
 npm --prefix frontend run dev
 ```
 
-Open **http://localhost:3000**. Restart FastAPI after editing environment variables. API documentation is available at **http://127.0.0.1:8000/docs**.
+Open **http://localhost:3000**. This local UI and API write to the hosted Supabase project, so their changes are visible from Vercel and other devices. Restart FastAPI after editing environment variables. API documentation is available at **http://127.0.0.1:8000/docs**.
 
 ## How verification works
 
@@ -44,7 +41,7 @@ Upload a Corrective Action Plan using the **CAP** document role and include it i
 
 ## Accounts and factory access
 
-The account migration adds eight fictional factories with Bangladeshi place names. Existing cases and test accounts are carried forward. The local setup retains the existing demo-only reviewer, viewer and Shaluk Factory Manager. Their emails are `reviewer@safetyproof.test`, `viewer@safetyproof.test` and `factory-manager@safetyproof.test`. Their randomly generated local credentials are in `.local/accounts.json`.
+The account migration adds eight fictional factories with Bangladeshi place names. Existing cases and test accounts are carried forward into the hosted Supabase project. Login credentials are managed by Supabase Auth; pending accounts need an admin-issued invite before they can set a password.
 
 Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your shell or private environment, then run:
 

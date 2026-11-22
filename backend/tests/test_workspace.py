@@ -126,7 +126,7 @@ async def test_viewer():
 async def test_case_review_and_permissions(monkeypatch, test_viewer, case_admin):
     credentials = ROOT / ".local/accounts.json"
     if not credentials.exists() or not main.cfg.supabase_anon_key:
-        pytest.skip("Run scripts/local_setup.py against local Supabase first")
+        pytest.skip("Configure the Supabase test project before running this test")
     monkeypatch.setattr(
         main,
         "cfg",
@@ -480,7 +480,7 @@ async def test_case_review_and_permissions(monkeypatch, test_viewer, case_admin)
 async def test_interrupted_job_reclaims_lease(monkeypatch, case_admin):
     credentials = ROOT / ".local/accounts.json"
     if not credentials.exists() or not main.cfg.supabase_anon_key:
-        pytest.skip("Run scripts/local_setup.py against local Supabase first")
+        pytest.skip("Configure the Supabase test project before running this test")
     monkeypatch.setattr(
         main, "cfg", main.cfg.model_copy(update={"worker_enabled": False})
     )

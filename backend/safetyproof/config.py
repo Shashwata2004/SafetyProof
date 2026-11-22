@@ -14,7 +14,7 @@ JOB_FIELDS = "id,case_id,kind,version_id,run_id,state,stage,completed,total,atte
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=(ROOT / ".env", ".env"), extra="ignore")
-    supabase_url: str = "http://127.0.0.1:54321"
+    supabase_url: str = ""
     supabase_anon_key: str = Field(default="", repr=False)
     supabase_service_role_key: str = Field(default="", repr=False)
     app_url: str = "http://localhost:3000"
