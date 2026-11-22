@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/signup/factory-manager/read-id-number": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read Manager Id Number */
+        post: operations["read_manager_id_number_v1_signup_factory_manager_read_id_number_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/signup/factory-manager/upload": {
         parameters: {
             query?: never;
@@ -294,6 +311,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/manager-applications/unseen-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unseen Manager Applications */
+        get: operations["unseen_manager_applications_v1_admin_manager_applications_unseen_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/manager-applications/mark-seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Manager Applications Seen */
+        post: operations["mark_manager_applications_seen_v1_admin_manager_applications_mark_seen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/manager-applications/{uid}": {
         parameters: {
             query?: never;
@@ -346,6 +397,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/accounts/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Deactivated Account */
+        delete: operations["delete_deactivated_account_v1_admin_accounts__uid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/cases": {
         parameters: {
             query?: never;
@@ -391,6 +459,24 @@ export interface paths {
         };
         /** Factory Overview */
         get: operations["factory_overview_v1_admin_factories_get"];
+        put?: never;
+        /** Create Factory */
+        post: operations["create_factory_v1_admin_factories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/scheduled-inspections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scheduled Inspections */
+        get: operations["scheduled_inspections_v1_admin_scheduled_inspections_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -937,6 +1023,10 @@ export interface components {
             organization: string | null;
             /** Role Type */
             role_type: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Job Title */
+            job_title?: string | null;
             /** Status */
             status: string;
             /**
@@ -946,6 +1036,12 @@ export interface components {
             created_at: string;
             /** Factory Id */
             factory_id: string | null;
+            /** Id Card Number */
+            id_card_number?: string | null;
+            /** Membership Number */
+            membership_number?: string | null;
+            /** Consent At */
+            consent_at?: string | null;
         };
         /** Archive */
         Archive: {
@@ -976,6 +1072,11 @@ export interface components {
         Assignments: {
             /** Factory Ids */
             factory_ids: string[];
+        };
+        /** Body_read_manager_id_number_v1_signup_factory_manager_read_id_number_post */
+        Body_read_manager_id_number_v1_signup_factory_manager_read_id_number_post: {
+            /** Office Card */
+            office_card: string;
         };
         /** CapReviewInput */
         CapReviewInput: {
@@ -1017,15 +1118,14 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /**
-             * Created By
-             * Format: uuid
-             */
-            created_by: string;
+            /** Created By */
+            created_by: string | null;
             /** Reviewer Id */
             reviewer_id?: string | null;
             /** Inspection On */
             inspection_on?: string | null;
+            /** Manager Notified At */
+            manager_notified_at?: string | null;
             /** Created At */
             created_at: string;
             /** Archived */
@@ -1076,6 +1176,13 @@ export interface components {
             revision: number;
             /** Method */
             method: string;
+        };
+        /** FactoryInput */
+        FactoryInput: {
+            /** Name */
+            name: string;
+            /** Address */
+            address: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1169,11 +1276,8 @@ export interface components {
              * Format: uuid
              */
             result_id: string;
-            /**
-             * Actor
-             * Format: uuid
-             */
-            actor: string;
+            /** Actor */
+            actor: string | null;
             /** Action */
             action: string;
             /** Comment */
@@ -1502,6 +1606,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    read_manager_id_number_v1_signup_factory_manager_read_id_number_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_read_manager_id_number_v1_signup_factory_manager_read_id_number_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1849,6 +1986,46 @@ export interface operations {
             };
         };
     };
+    unseen_manager_applications_v1_admin_manager_applications_unseen_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mark_manager_applications_seen_v1_admin_manager_applications_mark_seen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     application_v1_admin_manager_applications__uid__get: {
         parameters: {
             query?: never;
@@ -1948,7 +2125,7 @@ export interface operations {
             header?: never;
             path: {
                 uid: string;
-                choice: "approve" | "reject" | "deactivate";
+                choice: "approve" | "reject" | "deactivate" | "reactivate";
             };
             cookie?: never;
         };
@@ -1957,6 +2134,37 @@ export interface operations {
                 "application/json": components["schemas"]["Decision"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_deactivated_account_v1_admin_accounts__uid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -2109,6 +2317,59 @@ export interface operations {
         };
     };
     factory_overview_v1_admin_factories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    create_factory_v1_admin_factories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactoryInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scheduled_inspections_v1_admin_scheduled_inspections_get: {
         parameters: {
             query?: never;
             header?: never;

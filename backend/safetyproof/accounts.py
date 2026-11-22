@@ -10,7 +10,7 @@ from typing import Literal
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -79,9 +79,14 @@ class AccountProfile(BaseModel):
     role: str
     organization: str | None
     role_type: str | None
+    phone: str | None = None
+    job_title: str | None = None
     status: str
     created_at: datetime
     factory_id: UUID | None
+    id_card_number: str | None = None
+    membership_number: str | None = None
+    consent_at: datetime | None = None
 
 
 class Assignments(BaseModel):
@@ -291,6 +296,125 @@ def card_type(data):
     raise HTTPException(422, "Upload a valid JPG, PNG or PDF office ID card.")
 
 
+def extract_card_number(text):
+    label = re.compile(r"\b(?:ID|IDENTITY|NUMBER|NO\.?|#)\b", re.IGNORECASE)
+    candidate = re.compile(
+        r"(?<![A-Z0-9])([A-Z0-9]{2,}(?:[-/][A-Z0-9]{1,}){1,3})(?![A-Z0-9])",
+        re.IGNORECASE,
+    )
+    lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        found_label = label.search(line)
+        if not found_label:
+            continue
+        same_line = candidate.search(line[found_label.end() :])
+        if same_line:
+            return same_line.group(1).upper()
+        for following in lines[index + 1 : index + 3]:
+            match = candidate.search(following)
+            if match:
+                return match.group(1).upper()
+    matches = [
+        value
+        for value in candidate.findall(text.upper())
+        if re.search(r"[A-Z]", value) and re.search(r"\d", value)
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def read_card_text(data, kind, tessdata):
+    if kind == "application/pdf":
+        from .pdf import parse_pdf
+
+        parsed = parse_pdf(data, str(uuid4()), tessdata, batch_size=1)
+        text = parsed["pages"][0]["text"] if parsed["pages"] else ""
+    else:
+        import tesserocr
+        from PIL import ImageOps
+
+        with Image.open(io.BytesIO(data)) as source:
+            image = ImageOps.exif_transpose(source).convert("L")
+            image = ImageOps.autocontrast(image)
+            if max(image.size) > 2400:
+                image.thumbnail((2400, 2400))
+            with tesserocr.PyTessBaseAPI(
+                path=tessdata, lang="eng+ben", psm=tesserocr.PSM.AUTO
+            ) as api:
+                api.SetImage(image)
+                text = api.GetUTF8Text()
+            image.close()
+    return text
+
+
+def read_card_number(data, kind, tessdata):
+    return extract_card_number(read_card_text(data, kind, tessdata))
+
+
+def normalized_card_text(value):
+    return " ".join(re.findall(r"[a-z0-9]+", value.casefold()))
+
+
+async def manager_card_review(db, row, card_path):
+    if row["status"] != "pending_approval":
+        return None
+    if not card_path:
+        return {
+            "card_status": "missing",
+            "name_status": "not_checked",
+            "number_status": "not_checked",
+            "extracted_number": None,
+        }
+    try:
+        data = await db.call(
+            "GET",
+            "/storage/v1/object/" + CARD_BUCKET + "/" + card_path,
+            admin=True,
+            raw=True,
+        )
+        from starlette.concurrency import run_in_threadpool
+
+        text = await run_in_threadpool(
+            read_card_text, data, row["id_card_type"], db.settings.tessdata_prefix
+        )
+    except Exception:
+        return {
+            "card_status": "unreadable",
+            "name_status": "not_checked",
+            "number_status": "not_checked",
+            "extracted_number": None,
+        }
+    if not text.strip():
+        return {
+            "card_status": "unreadable",
+            "name_status": "not_found",
+            "number_status": "not_found",
+            "extracted_number": None,
+        }
+    submitted_name = normalized_card_text(row["full_name"])
+    recognized_text = normalized_card_text(text)
+    name_status = "match" if submitted_name in recognized_text else "not_found"
+    extracted_number = extract_card_number(text)
+    submitted_number = row.get("id_card_number")
+    if not extracted_number:
+        number_status = "not_found" if submitted_number else "not_entered"
+    elif not submitted_number:
+        number_status = "not_entered"
+    else:
+        normalize_number = lambda value: re.sub(r"[^A-Z0-9]", "", value.upper())
+        number_status = (
+            "match"
+            if normalize_number(extracted_number)
+            == normalize_number(submitted_number)
+            else "mismatch"
+        )
+    return {
+        "card_status": "readable",
+        "name_status": name_status,
+        "number_status": number_status,
+        "extracted_number": extracted_number,
+    }
+
+
 async def delete_card(db, key):
     await db.call(
         "DELETE",
@@ -340,7 +464,10 @@ def account_router(user, db_dep):
         return await db.one(
             "account_profiles",
             u.id,
-            fields="id,full_name,email,role,organization,role_type,status,created_at,factory_id",
+            fields=(
+                "id,full_name,email,role,organization,role_type,phone,job_title,"
+                "status,created_at,factory_id,id_card_number,membership_number,consent_at"
+            ),
         )
 
     @router.post("/login")
@@ -371,6 +498,7 @@ def account_router(user, db_dep):
                 "rejected": "Your application was rejected: "
                 + (status["reason"] or ""),
                 "deactivated": "Your account is deactivated.",
+                "deleted": "This account has been deleted.",
             }
             raise HTTPException(
                 403,
@@ -461,6 +589,23 @@ def account_router(user, db_dep):
             fields="factories(id,name,address)",
             filters={"reviewer_id": "eq." + u.id},
         )
+
+    @router.post("/signup/factory-manager/read-id-number")
+    async def read_manager_id_number(
+        request: Request, office_card: UploadFile = File(...), db=Depends(db_dep)
+    ):
+        await rate(db, request, "manager-card-ocr", 20)
+        data = await office_card.read(CARD_LIMIT + 1)
+        kind = card_type(data)
+        from starlette.concurrency import run_in_threadpool
+
+        try:
+            number = await run_in_threadpool(
+                read_card_number, data, kind, db.settings.tessdata_prefix
+            )
+        except Exception:
+            number = None
+        return {"number": number}
 
     @router.post("/signup/factory-manager/upload")
     async def reserve_card(request: Request, db=Depends(db_dep)):
@@ -672,6 +817,35 @@ def account_router(user, db_dep):
             order="created_at.desc",
         )
 
+    @router.get("/admin/manager-applications/unseen-count")
+    async def unseen_manager_applications(u=Depends(admin), db=Depends(db_dep)):
+        rows = await db.rows(
+            "account_profiles",
+            fields="id",
+            filters={
+                "role": "eq.factory_manager",
+                "status": "eq.pending_approval",
+                "manager_application_seen_at": "is.null",
+            },
+        )
+        return {"count": len(rows)}
+
+    @router.post("/admin/manager-applications/mark-seen")
+    async def mark_manager_applications_seen(u=Depends(admin), db=Depends(db_dep)):
+        rows = await db.call(
+            "PATCH",
+            "/rest/v1/account_profiles",
+            admin=True,
+            params={
+                "role": "eq.factory_manager",
+                "status": "eq.pending_approval",
+                "manager_application_seen_at": "is.null",
+            },
+            data={"manager_application_seen_at": datetime.now(UTC).isoformat()},
+            headers={"Prefer": "return=representation"},
+        )
+        return {"updated": len(rows or [])}
+
     async def application_row(db, uid):
         row = await db.one(
             "account_profiles",
@@ -685,11 +859,13 @@ def account_router(user, db_dep):
     @router.get("/admin/manager-applications/{uid}")
     async def application(uid: UUID, u=Depends(admin), db=Depends(db_dep)):
         row = await application_row(db, uid)
-        card_present = bool(row.pop("id_card_path"))
+        card_path = row.pop("id_card_path")
+        card_present = bool(card_path)
         row["has_id_card"] = card_present and row["status"] == "pending_approval"
         row["card_cleanup_pending"] = (
             card_present and row["status"] != "pending_approval"
         )
+        row["id_card_review"] = await manager_card_review(db, row, card_path)
         row["requested_factory"] = (
             await factory(db, row["requested_factory_id"])
             if row["requested_factory_id"]
@@ -728,7 +904,7 @@ def account_router(user, db_dep):
     @router.post("/admin/accounts/{uid}/{choice}")
     async def decide(
         uid: UUID,
-        choice: Literal["approve", "reject", "deactivate"],
+        choice: Literal["approve", "reject", "deactivate", "reactivate"],
         body: Decision,
         u=Depends(admin),
         db=Depends(db_dep),
@@ -747,6 +923,19 @@ def account_router(user, db_dep):
         if path:
             await finish_card_cleanup(db, uid, path)
         return {"updated": True}
+
+    @router.delete("/admin/accounts/{uid}")
+    async def delete_deactivated_account(
+        uid: UUID, u=Depends(admin), db=Depends(db_dep)
+    ):
+        path = await db.rpc("account_delete", actor_id=u.id, uid=str(uid))
+        card_cleanup_pending = False
+        if path:
+            try:
+                await finish_card_cleanup(db, uid, path)
+            except PlatformError:
+                card_cleanup_pending = True
+        return {"deleted": True, "card_cleanup_pending": card_cleanup_pending}
 
     @router.delete("/admin/manager-applications/{uid}/id-card")
     async def retry_cleanup(uid: UUID, u=Depends(admin), db=Depends(db_dep)):
@@ -769,36 +958,6 @@ def account_router(user, db_dep):
             assignee_id=str(body.reviewer_id),
             data=body.model_dump(mode="json", exclude={"reviewer_id"}),
         )
-
-    @router.post("/admin/cases/{cid}/notify-manager")
-    async def notify_case_manager(cid: UUID, u=Depends(admin), db=Depends(db_dep)):
-        case = await db.one(
-            "cases",
-            cid,
-            fields="id,factory_id,inspection_on,archived,deleting",
-        )
-        if case["archived"] or case["deleting"] or not case["inspection_on"]:
-            raise HTTPException(409, "This inspection is not available for notification.")
-        managers = await db.rows(
-            "account_profiles",
-            fields="id",
-            filters={
-                "factory_id": "eq." + case["factory_id"],
-                "role": "eq.factory_manager",
-                "status": "eq.active",
-            },
-        )
-        if not managers:
-            raise HTTPException(409, "This factory has no active manager to notify.")
-        notified_at = datetime.now(UTC).isoformat()
-        await db.call(
-            "PATCH",
-            "/rest/v1/cases",
-            admin=True,
-            params={"id": "eq." + str(cid)},
-            data={"manager_notified_at": notified_at},
-        )
-        return {"notified": len(managers), "notified_at": notified_at}
 
     @router.get("/admin/cases/{cid}")
     async def admin_case(cid: UUID, u=Depends(admin), db=Depends(db_dep)):

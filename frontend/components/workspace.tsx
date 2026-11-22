@@ -132,7 +132,7 @@ function App() {
           status: string;
         }[];
       }>("/v1/manager/work", token),
-    enabled: isManager && !cid,
+    enabled: isManager,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
     refetchInterval: 30000,
@@ -641,6 +641,14 @@ function App() {
             <dd>{accountName}</dd>
             <dt>Email</dt>
             <dd>{profile?.email || session.user.email}</dd>
+            <dt>Role</dt>
+            <dd>
+              {role === "factory_manager"
+                ? "Factory Manager"
+                : role === "reviewer"
+                  ? "Reviewer / Auditor"
+                  : role || "Not recorded"}
+            </dd>
             {role === "reviewer" && (
               <>
                 <dt>Organization</dt>
@@ -656,6 +664,40 @@ function App() {
                       : assigned.data
                           ?.map(({ factories }) => factories.name)
                           .join(", ") || "No factory assignments"}
+                </dd>
+              </>
+            )}
+            {role === "factory_manager" && (
+              <>
+                <dt>Organization</dt>
+                <dd>
+                  {profile?.organization ||
+                    managerWork.data?.factory.name ||
+                    (managerWork.isPending ? "Loading…" : "Not recorded")}
+                </dd>
+                <dt>Factory</dt>
+                <dd>
+                  {managerWork.data?.factory.name ||
+                    (managerWork.isPending ? "Loading…" : "Unavailable")}
+                </dd>
+                <dt>Factory address</dt>
+                <dd>
+                  {managerWork.data?.factory.address ||
+                    (managerWork.isPending ? "Loading…" : "Unavailable")}
+                </dd>
+                <dt>Phone</dt>
+                <dd>{profile?.phone || "Not recorded"}</dd>
+                <dt>Job title</dt>
+                <dd>{profile?.job_title || "Factory Manager"}</dd>
+                <dt>Office ID card number</dt>
+                <dd>{profile?.id_card_number || "Not recorded"}</dd>
+                <dt>Factory license / membership number</dt>
+                <dd>{profile?.membership_number || "Not recorded"}</dd>
+                <dt>Office ID consent</dt>
+                <dd>
+                  {profile?.consent_at
+                    ? `Recorded ${dateText(profile.consent_at)}`
+                    : "Not recorded"}
                 </dd>
               </>
             )}

@@ -37,6 +37,17 @@ type Application = {
   id_card_deleted_at: string | null;
   requested_factory: Factory | null;
   active_manager_factory_ids: string[];
+  id_card_review?: {
+    card_status: "missing" | "unreadable" | "readable";
+    name_status: "match" | "not_found" | "not_checked";
+    number_status:
+      | "match"
+      | "mismatch"
+      | "not_found"
+      | "not_entered"
+      | "not_checked";
+    extracted_number: string | null;
+  } | null;
 };
 type FactorySummary = Factory & {
   managers: number;
@@ -105,8 +116,8 @@ export function AdminWorkspace({
   const [factoryAddress, setFactoryAddress] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [assignmentFactoryId, setAssignmentFactoryId] = useState("");
-  const [assignmentSaved, setAssignmentSaved] = useState(false);
-  const [pendingNotifyCaseId, setPendingNotifyCaseId] = useState("");
+  const [caseFormKey, setCaseFormKey] = useState(0);
+  const [caseCreated, setCaseCreated] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState("");
   const [selected, setSelected] = useState("");
   const [caseId, setCaseId] = useState("");
@@ -122,6 +133,11 @@ export function AdminWorkspace({
   const [deactivate, setDeactivate] = useState<{
     id: string;
     name: string;
+  } | null>(null);
+  const [deleteAccount, setDeleteAccount] = useState<{
+    id: string;
+    name: string;
+    role: "reviewer" | "factory_manager";
   } | null>(null);
   const factories = useQuery({
     queryKey: ["admin-factories", token],
@@ -142,17 +158,59 @@ export function AdminWorkspace({
     queryKey: ["admin-applications", token],
     queryFn: () => api<Application[]>("/v1/admin/manager-applications", token),
     enabled: view === "manager-applications",
+    refetchInterval: 15_000,
   });
+  const unseenManagerApplications = useQuery({
+    queryKey: ["admin-unseen-manager-applications", token],
+    queryFn: () =>
+      api<{ count: number }>(
+        "/v1/admin/manager-applications/unseen-count",
+        token,
+      ),
+    enabled: view !== "manager-applications",
+    refetchInterval: 15_000,
+  });
+  useEffect(() => {
+    if (
+      view !== "manager-applications" ||
+      managers.isLoading ||
+      managers.error ||
+      !managers.data
+    )
+      return;
+    let active = true;
+    void api(
+      "/v1/admin/manager-applications/mark-seen",
+      token,
+      "POST",
+    )
+      .then(() => {
+        if (active) {
+          void cache.invalidateQueries({
+            queryKey: ["admin-unseen-manager-applications", token],
+          });
+        }
+      })
+      .catch((error) => {
+        if (active) setError(message(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    view,
+    token,
+    managers.data,
+    managers.dataUpdatedAt,
+    managers.isLoading,
+    managers.error,
+    cache,
+  ]);
   const assignees =
     reviewers.data?.filter((row) => row.status === "active") || [];
   const assignee = assignees.find((row) => row.id === assigneeId);
   const assignmentFactory = factories.data?.find(
     (row) => row.id === assignmentFactoryId,
-  );
-  const hasAssignment = Boolean(
-    assignee?.reviewer_factories.some(
-      (row) => row.factory_id === assignmentFactoryId,
-    ),
   );
   const names = new Map(factories.data?.map((f) => [f.id, f.name]));
 
@@ -207,7 +265,6 @@ export function AdminWorkspace({
       setError("Enter the factory name and address.");
       return;
     }
-    setAssignmentSaved(false);
     await perform(async () => {
       await api("/v1/admin/factories", token, "POST", {
         name,
@@ -220,29 +277,15 @@ export function AdminWorkspace({
     });
   }
 
-  async function toggleAssignment() {
-    if (!assignee || !assignmentFactory) return;
-    const current = new Set(
-      assignee.reviewer_factories.map((row) => row.factory_id),
-    );
-    if (current.has(assignmentFactory.id)) current.delete(assignmentFactory.id);
-    else current.add(assignmentFactory.id);
-    setAssignmentSaved(false);
-    await perform(async () => {
-      await api(`/v1/admin/reviewers/${assignee.id}/factories`, token, "POST", {
-        factory_ids: Array.from(current),
-      });
-      setAssignmentSaved(true);
-      await reviewers.refetch();
-    });
-  }
-
   async function createCase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!assignmentFactory || !assignee || !hasAssignment) return;
+    if (!assignmentFactory || !assignee || caseCreated) return;
     const fields = Object.fromEntries(new FormData(event.currentTarget));
     await perform(async () => {
-      const created = await api<{ id: string }>(
+      const created = await api<{
+        id: string;
+        manager_notified_at: string | null;
+      }>(
         "/v1/admin/cases",
         token,
         "POST",
@@ -253,27 +296,23 @@ export function AdminWorkspace({
           programme: fields.programme || null,
         },
       );
-      setPendingNotifyCaseId(created.id);
+      setCaseCreated(true);
       setNotificationMessage(
-        "Inspection assigned. The factory manager has not been notified.",
+        created.manager_notified_at
+          ? "Inspection assigned. The factory manager has been notified."
+          : "Inspection assigned. No active factory manager was available to notify.",
       );
       await factories.refetch();
     });
   }
 
-  async function notifyManager(caseToNotify: string) {
-    await perform(async () => {
-      const result = await api<{ notified: number }>(
-        `/v1/admin/cases/${caseToNotify}/notify-manager`,
-        token,
-        "POST",
-      );
-      setNotificationMessage(
-        `Notice sent to ${result.notified} factory manager${result.notified === 1 ? "" : "s"}.`,
-      );
-      if (pendingNotifyCaseId === caseToNotify) setPendingNotifyCaseId("");
-      await scheduledInspections.refetch();
-    });
+  function startNewCase() {
+    setCaseFormKey((key) => key + 1);
+    setCaseCreated(false);
+    setAssignmentFactoryId("");
+    setAssigneeId("");
+    setNotificationMessage("");
+    setError("");
   }
 
   return (
@@ -304,6 +343,15 @@ export function AdminWorkspace({
               }}
             >
               {label}
+              {id === "manager-applications" &&
+                (unseenManagerApplications.data?.count || 0) > 0 && (
+                  <span
+                    className="notification-dot"
+                    role="img"
+                    aria-label="New manager applications"
+                    title="New manager applications"
+                  />
+                )}
             </button>
           ))}
         </nav>
@@ -431,7 +479,15 @@ export function AdminWorkspace({
                   </dl>
                 </div>
                 <div className="inline-actions">
-                  <Tag tone={row.status === "active" ? "green" : "amber"}>
+                  <Tag
+                    tone={
+                      row.status === "active"
+                        ? "green"
+                        : row.status === "deleted"
+                          ? "red"
+                          : "amber"
+                    }
+                  >
                     {row.status === "pending_approval"
                       ? "Access requested"
                       : status(row.status)}
@@ -471,14 +527,48 @@ export function AdminWorkspace({
                     </button>
                   )}
                   {["pending", "active"].includes(row.status) && (
+                    <button
+                      onClick={() => {
+                        setError("");
+                        setDeactivate({ id: row.id, name: row.full_name });
+                      }}
+                    >
+                      Deactivate
+                    </button>
+                  )}
+                  {row.status === "deactivated" && (
                     <>
                       <button
-                        onClick={() => {
-                          setError("");
-                          setDeactivate({ id: row.id, name: row.full_name });
-                        }}
+                        disabled={busy}
+                        onClick={() =>
+                          void perform(async () => {
+                            await api(
+                              `/v1/admin/accounts/${row.id}/reactivate`,
+                              token,
+                              "POST",
+                              {},
+                            );
+                            await Promise.all([
+                              reviewers.refetch(),
+                              factories.refetch(),
+                            ]);
+                          })
+                        }
                       >
-                        Deactivate
+                        Reactivate
+                      </button>
+                      <button
+                        className="danger"
+                        disabled={busy}
+                        onClick={() =>
+                          setDeleteAccount({
+                            id: row.id,
+                            name: row.full_name,
+                            role: "reviewer",
+                          })
+                        }
+                      >
+                        Delete
                       </button>
                     </>
                   )}
@@ -493,12 +583,13 @@ export function AdminWorkspace({
               <div>
                 <h1>Factory assignments</h1>
                 <p>
-                  Manage factory access and schedule inspections with an active
-                  reviewer.
+                  Schedule inspections with an active reviewer. Assigning a case
+                  gives that reviewer access to its factory.
                 </p>
               </div>
             </div>
             <form
+              key={caseFormKey}
               className="panel-pad admin-form"
               onSubmit={createCase}
             >
@@ -513,7 +604,6 @@ export function AdminWorkspace({
                   onChange={(event) => {
                     setAssignmentFactoryId(event.target.value);
                     setAssigneeId("");
-                    setAssignmentSaved(false);
                     setError("");
                   }}
                 >
@@ -540,7 +630,6 @@ export function AdminWorkspace({
                   disabled={busy || !assignees.length}
                   onChange={(event) => {
                     setAssigneeId(event.target.value);
-                    setAssignmentSaved(false);
                     setError("");
                   }}
                 >
@@ -556,14 +645,10 @@ export function AdminWorkspace({
                 !reviewers.error &&
                 !assignees.length && <p>No active reviewers available.</p>}
               {assignmentFactory && assignee && (
-                <div>
-                  <p>
-                    {assignee.full_name} is{" "}
-                    {hasAssignment ? "assigned to" : "not assigned to"}{" "}
-                    {assignmentFactory.name}.
-                  </p>
-                  {assignmentSaved && <p role="status">Assignment updated.</p>}
-                </div>
+                <p>
+                  Assigning this inspection will give {assignee.full_name} access
+                  to {assignmentFactory.name}.
+                </p>
               )}
               <h2>Schedule inspection</h2>
               <label>
@@ -584,42 +669,27 @@ export function AdminWorkspace({
                 <input name="inspection_on" type="date" required />
               </label>
               <p className="hint">
-                Assigning the inspection creates the case. You can notify the
-                factory manager separately if you want them to see a dashboard
-                notice.
+                Assigning the inspection creates the case and grants reviewer
+                access to the factory. An active factory manager receives a
+                dashboard notice automatically when the case is assigned.
               </p>
               {(!assignmentFactory || !assignee) && (
                 <p className="hint">
                   Choose a factory and an active reviewer to continue.
                 </p>
               )}
-              {assignmentFactory && assignee && !hasAssignment && (
-                <p className="hint">
-                  Assign this reviewer to the selected factory before
-                  scheduling the inspection.
-                </p>
-              )}
               <div className="form-actions">
                 <button
-                  type="button"
-                  disabled={busy || !assignmentFactory || !assignee}
-                  onClick={() => void toggleAssignment()}
-                >
-                  {hasAssignment ? "Remove reviewer" : "Assign reviewer"}
-                </button>
-                <button
                   className="primary"
-                  disabled={busy || !assignmentFactory || !assignee || !hasAssignment}
+                  disabled={busy || caseCreated || !assignmentFactory || !assignee}
                 >
                   {busy ? "Assigning…" : "Assign case"}
                 </button>
-                <button
-                  type="button"
-                  disabled={busy || !pendingNotifyCaseId}
-                  onClick={() => void notifyManager(pendingNotifyCaseId)}
-                >
-                  Notify factory manager (optional)
-                </button>
+                {caseCreated && (
+                  <button type="button" disabled={busy} onClick={startNewCase}>
+                    Assign new case
+                  </button>
+                )}
               </div>
               {notificationMessage && (
                 <p role="status">{notificationMessage}</p>
@@ -675,16 +745,11 @@ export function AdminWorkspace({
                           ? "Report needs attention"
                           : "Scheduled"}
                   </Tag>
-                  {item.manager_notified_at ? (
-                    <Tag tone="green">Manager notified</Tag>
-                  ) : (
-                    <button
-                      disabled={busy}
-                      onClick={() => void notifyManager(item.id)}
-                    >
-                      Notify manager
-                    </button>
-                  )}
+                  <Tag tone={item.manager_notified_at ? "green" : "amber"}>
+                    {item.manager_notified_at
+                      ? "Manager notified"
+                      : "No manager notified"}
+                  </Tag>
                   <button onClick={() => setCaseId(item.id)}>View case</button>
                 </div>
               </div>
@@ -717,7 +782,15 @@ export function AdminWorkspace({
                       · {dateText(row.created_at)}
                     </small>
                   </div>
-                  <Tag tone={row.status === "active" ? "green" : "amber"}>
+                  <Tag
+                    tone={
+                      row.status === "active"
+                        ? "green"
+                        : row.status === "deleted"
+                          ? "red"
+                          : "amber"
+                    }
+                  >
                     {status(row.status)}
                   </Tag>
                   <button onClick={() => setSelected(row.id)}>
@@ -733,6 +806,9 @@ export function AdminWorkspace({
                 token={token}
                 factories={factories.data || []}
                 close={() => setSelected("")}
+                requestDelete={(name) =>
+                  setDeleteAccount({ id: selected, name, role: "factory_manager" })
+                }
                 changed={async () => {
                   await Promise.all([
                     managers.refetch(),
@@ -870,6 +946,55 @@ export function AdminWorkspace({
           </button>
         </Modal>
       )}
+      {deleteAccount && (
+        <Modal
+          title="Mark account as deleted?"
+          close={() => setDeleteAccount(null)}
+        >
+          <p>
+            {deleteAccount.name}&apos;s access will end permanently. The account
+            will remain in this list with a Deleted status, and its case and
+            review history will stay linked to it.
+          </p>
+          <p>This account cannot be reactivated.</p>
+          {error && <ErrorNote text={error} />}
+          <div className="inline-actions">
+            <button onClick={() => setDeleteAccount(null)}>Cancel</button>
+            <button
+              className="danger"
+              disabled={busy}
+              onClick={() =>
+                void perform(async () => {
+                  const result = await api<{
+                    deleted: boolean;
+                    card_cleanup_pending: boolean;
+                  }>(
+                    `/v1/admin/accounts/${deleteAccount.id}`,
+                    token,
+                    "DELETE",
+                  );
+                  setDeleteAccount(null);
+                  if (deleteAccount.role === "factory_manager") {
+                    setSelected("");
+                  }
+                  await Promise.all([
+                    reviewers.refetch(),
+                    managers.refetch(),
+                    factories.refetch(),
+                  ]);
+                  if (result.card_cleanup_pending) {
+                    setError(
+                      "The account was deleted, but its stored ID image could not be removed. Contact an administrator to finish the cleanup.",
+                    );
+                  }
+                })
+              }
+            >
+              Mark as deleted
+            </button>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }
@@ -879,12 +1004,14 @@ function ManagerDetail({
   token,
   factories,
   close,
+  requestDelete,
   changed,
 }: {
   id: string;
   token: string;
   factories: Factory[];
   close: () => void;
+  requestDelete: (name: string) => void;
   changed: () => Promise<void>;
 }) {
   const query = useQuery({
@@ -961,6 +1088,55 @@ function ManagerDetail({
             Submitted {dateText(row.created_at)}.{" "}
             {row.consent_at ? "Office ID consent recorded." : ""}
           </p>
+          {row.id_card_review && (
+            <section className="id-card-review" aria-label="Office ID review">
+              <h3>Office ID review</h3>
+              <div
+                className={`id-card-check ${row.id_card_review.card_status === "readable" ? "ok" : "warn"}`}
+              >
+                <span>Card file</span>
+                <strong>
+                  {row.id_card_review.card_status === "readable"
+                    ? "Readable card found"
+                    : row.id_card_review.card_status === "missing"
+                      ? "No card attached"
+                      : "Card could not be read"}
+                </strong>
+              </div>
+              <div
+                className={`id-card-check ${row.id_card_review.name_status === "match" ? "ok" : "warn"}`}
+              >
+                <span>Applicant name</span>
+                <strong>
+                  {row.id_card_review.name_status === "match"
+                    ? "Name found on card"
+                    : row.id_card_review.name_status === "not_checked"
+                      ? "Not checked"
+                      : "Name not found on card text"}
+                </strong>
+              </div>
+              <div
+                className={`id-card-check ${row.id_card_review.number_status === "match" ? "ok" : "warn"}`}
+              >
+                <span>Office ID number</span>
+                <strong>
+                  {row.id_card_review.number_status === "match"
+                    ? "Matches the application"
+                    : row.id_card_review.number_status === "mismatch"
+                      ? `Mismatch · card: ${row.id_card_review.extracted_number} · application: ${row.id_card_number}`
+                      : row.id_card_review.number_status === "not_entered"
+                        ? row.id_card_review.extracted_number
+                          ? `Card says ${row.id_card_review.extracted_number}; no number entered in application`
+                          : "No number entered in the application"
+                        : "Could not verify the number from the card"}
+                </strong>
+              </div>
+              <p className="hint">
+                These checks are warnings for manual review. They do not approve
+                or reject the application automatically.
+              </p>
+            </section>
+          )}
           {row.requested_factory && (
             <p>
               Requested factory: {row.requested_factory.name} ·{" "}
@@ -1069,6 +1245,29 @@ function ManagerDetail({
             >
               Deactivate manager
             </button>
+          )}
+          {row.status === "deactivated" && (
+            <div className="inline-actions">
+              <button
+                className="primary"
+                disabled={busy || !row.factory_id}
+                onClick={() => void action("reactivate")}
+                title={
+                  row.factory_id
+                    ? "Restore this same manager account and factory access."
+                    : "This manager has no factory binding; assign one before reactivation."
+                }
+              >
+                Reactivate manager
+              </button>
+              <button
+                className="danger"
+                disabled={busy}
+                onClick={() => requestDelete(row.full_name)}
+              >
+                Delete manager
+              </button>
+            </div>
           )}
         </div>
       )}
