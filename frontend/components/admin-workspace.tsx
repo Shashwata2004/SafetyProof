@@ -535,20 +535,12 @@ export function AdminWorkspace({
                 !reviewers.error &&
                 !assignees.length && <p>No active reviewers available.</p>}
               {assignmentFactory && assignee && (
-                <div className="admin-form">
+                <div>
                   <p>
                     {assignee.full_name} is{" "}
                     {hasAssignment ? "assigned to" : "not assigned to"}{" "}
                     {assignmentFactory.name}.
                   </p>
-                  <button
-                    className={hasAssignment ? undefined : "primary"}
-                    disabled={busy}
-                    type="button"
-                    onClick={() => void toggleAssignment()}
-                  >
-                    {hasAssignment ? "Remove assignment" : "Assign reviewer"}
-                  </button>
                   {assignmentSaved && <p role="status">Assignment updated.</p>}
                 </div>
               )}
@@ -585,12 +577,21 @@ export function AdminWorkspace({
                   scheduling the inspection.
                 </p>
               )}
-              <button
-                className="primary"
-                disabled={busy || !assignmentFactory || !assignee || !hasAssignment}
-              >
-                {busy ? "Scheduling…" : "Assign case and notify factory"}
-              </button>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  disabled={busy || !assignmentFactory || !assignee}
+                  onClick={() => void toggleAssignment()}
+                >
+                  {hasAssignment ? "Remove reviewer" : "Assign reviewer"}
+                </button>
+                <button
+                  className="primary"
+                  disabled={busy || !assignmentFactory || !assignee || !hasAssignment}
+                >
+                  {busy ? "Scheduling…" : "Assign case and notify factory"}
+                </button>
+              </div>
             </form>
           </section>
         )}
