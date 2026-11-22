@@ -1,9 +1,10 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager, suppress
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID, uuid4, uuid5
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -661,6 +662,12 @@ async def corrective_role(d, u, cid):
     return membership[0]["role"]
 
 
+def corrective_deadline_passed(task):
+    deadline = date.fromisoformat(task["due_on"])
+    today = datetime.now(ZoneInfo("Asia/Dhaka")).date()
+    return today > deadline
+
+
 @app.post("/v1/cases/{cid}/share-manager", status_code=201)
 async def share_manager(
     cid: UUID, body: ManagerShare, u: User = Depends(user), d=Depends(db)
@@ -743,6 +750,10 @@ async def submit_task_evidence(
     task = await d.one("corrective_tasks", tid, token=u.token)
     if await corrective_role(d, u, task["case_id"]) != "manager":
         raise HTTPException(403, "Factory Manager access required.")
+    if corrective_deadline_passed(task):
+        raise HTTPException(
+            409, "This task deadline has passed. Evidence can no longer be submitted."
+        )
     if task["status"] not in {"assigned", "in_progress", "needs_revision"}:
         raise HTTPException(409, "This task is not accepting evidence.")
     filename = filename.strip()
@@ -794,6 +805,10 @@ async def reserve_corrective_upload(
     task = await d.one("corrective_tasks", tid, token=u.token)
     if await corrective_role(d, u, task["case_id"]) != "manager":
         raise HTTPException(403, "Factory Manager access required.")
+    if corrective_deadline_passed(task):
+        raise HTTPException(
+            409, "This task deadline has passed. Evidence can no longer be submitted."
+        )
     if task["status"] not in {"assigned", "in_progress", "needs_revision"}:
         raise HTTPException(409, "This task is not accepting evidence.")
     try:
@@ -836,6 +851,15 @@ async def finalize_corrective_upload(
     )
     if existing:
         return {"id": receipt["id"]}
+    if corrective_deadline_passed(task):
+        key = f"{task['case_id']}/corrective/{receipt['id']}.pdf"
+        try:
+            await d.remove([key])
+        except PlatformError:
+            pass
+        raise HTTPException(
+            409, "This task deadline has passed. Evidence can no longer be submitted."
+        )
     if task["status"] not in {"assigned", "in_progress", "needs_revision"}:
         raise HTTPException(409, "This task is not accepting evidence.")
     key = f"{task['case_id']}/corrective/{receipt['id']}.pdf"

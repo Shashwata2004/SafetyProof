@@ -348,6 +348,7 @@ function TaskCard({
   const managerCanSubmit =
     !reviewer &&
     writable &&
+    !overdue &&
     ["assigned", "in_progress", "needs_revision"].includes(task.status);
   async function change(fn: () => Promise<unknown>) {
     setError("");
@@ -423,6 +424,11 @@ function TaskCard({
       {task.detail && (
         <p className="panel-pad task-detail" dir="auto">
           {task.detail}
+        </p>
+      )}
+      {overdue && !reviewer && (
+        <p className="notice" role="status">
+          The deadline has passed. Factory evidence can no longer be submitted.
         </p>
       )}
       {evidence.map((entry) => (
