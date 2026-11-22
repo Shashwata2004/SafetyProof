@@ -6,7 +6,7 @@ export function apiBase(): string {
     typeof window !== "undefined" &&
     ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)
   ) {
-    return "http://127.0.0.1:8000";
+    return `http://${window.location.hostname}:8000`;
   }
   throw new Error(
     "The public document library is available. Sign-in requires a hosted workspace connection.",

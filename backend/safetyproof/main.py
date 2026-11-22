@@ -64,6 +64,7 @@ app.add_middleware(
     allow_origins=[s.strip() for s in cfg.cors_origins.split(",")],
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Upload-Receipt"],
+    allow_private_network=True,
 )
 
 
