@@ -88,6 +88,19 @@ class Assignments(BaseModel):
     factory_ids: list[UUID] = Field(max_length=30)
 
 
+class FactoryInput(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    address: str = Field(min_length=1, max_length=500)
+
+    @field_validator("name", "address")
+    @classmethod
+    def nonblank(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("This field is required.")
+        return value
+
+
 class AssignedCaseInput(CaseInput):
     reviewer_id: UUID
     inspection_on: date | None = None
@@ -807,5 +820,21 @@ def account_router(user, db_dep):
     @router.get("/admin/factories")
     async def factory_overview(u=Depends(admin), db=Depends(db_dep)):
         return await db.rpc("factory_overview")
+
+    @router.post("/admin/factories", status_code=201)
+    async def create_factory(body: FactoryInput, u=Depends(admin), db=Depends(db_dep)):
+        try:
+            created = await db.call(
+                "POST",
+                "/rest/v1/factories",
+                admin=True,
+                data={"name": body.name, "address": body.address},
+                headers={"Prefer": "return=representation"},
+            )
+        except PlatformError as exc:
+            if exc.status == 409:
+                raise HTTPException(409, "A factory with this name already exists.") from exc
+            raise
+        return created[0]
 
     return router

@@ -88,8 +88,12 @@ export function AdminWorkspace({
 }) {
   const cache = useQueryClient();
   const [add, setAdd] = useState(false);
+  const [addingFactory, setAddingFactory] = useState(false);
+  const [factoryName, setFactoryName] = useState("");
+  const [factoryAddress, setFactoryAddress] = useState("");
   const [addingCase, setAddingCase] = useState(false);
   const [assigneeId, setAssigneeId] = useState("");
+  const [assignmentFactoryId, setAssignmentFactoryId] = useState("");
   const [assignmentSaved, setAssignmentSaved] = useState(false);
   const [selected, setSelected] = useState("");
   const [caseId, setCaseId] = useState("");
@@ -123,6 +127,14 @@ export function AdminWorkspace({
   const assignees =
     reviewers.data?.filter((row) => row.status === "active") || [];
   const assignee = assignees.find((row) => row.id === assigneeId);
+  const assignmentFactory = factories.data?.find(
+    (row) => row.id === assignmentFactoryId,
+  );
+  const hasAssignment = Boolean(
+    assignee?.reviewer_factories.some(
+      (row) => row.factory_id === assignmentFactoryId,
+    ),
+  );
   const names = new Map(factories.data?.map((f) => [f.id, f.name]));
 
   async function perform(action: () => Promise<void>) {
@@ -168,17 +180,41 @@ export function AdminWorkspace({
     });
   }
 
-  async function saveAssignments(event: FormEvent<HTMLFormElement>) {
+  async function saveFactory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!assignee) return;
-    const ids = new FormData(event.currentTarget).getAll("factory_ids");
+    const name = factoryName.trim();
+    const address = factoryAddress.trim();
+    if (!name || !address) {
+      setError("Enter the factory name and address.");
+      return;
+    }
+    setAssignmentSaved(false);
+    await perform(async () => {
+      await api("/v1/admin/factories", token, "POST", {
+        name,
+        address,
+      });
+      setFactoryName("");
+      setFactoryAddress("");
+      setAddingFactory(false);
+      await factories.refetch();
+    });
+  }
+
+  async function toggleAssignment() {
+    if (!assignee || !assignmentFactory) return;
+    const current = new Set(
+      assignee.reviewer_factories.map((row) => row.factory_id),
+    );
+    if (current.has(assignmentFactory.id)) current.delete(assignmentFactory.id);
+    else current.add(assignmentFactory.id);
     setAssignmentSaved(false);
     await perform(async () => {
       await api(`/v1/admin/reviewers/${assignee.id}/factories`, token, "POST", {
-        factory_ids: ids,
+        factory_ids: Array.from(current),
       });
       setAssignmentSaved(true);
-      await Promise.all([reviewers.refetch(), factories.refetch()]);
+      await reviewers.refetch();
     });
   }
 
@@ -212,23 +248,61 @@ export function AdminWorkspace({
             </button>
           ))}
         </nav>
-        {error && !add && !deactivate && !addingCase && (
+        {error && !add && !deactivate && !addingCase && !addingFactory && (
           <ErrorNote text={error} />
         )}
         {view === "factories" && (
           <section className="panel">
             <div className="section-head">
               <h1>Factory safety overview</h1>
-              <button
-                className="primary"
-                onClick={() => {
-                  setError("");
-                  setAddingCase(true);
-                }}
-              >
-                New case
-              </button>
+              <div className="inline-actions">
+                <button
+                  onClick={() => {
+                    setError("");
+                    setAddingFactory((open) => !open);
+                  }}
+                >
+                  {addingFactory ? "Cancel" : "Add factory"}
+                </button>
+                <button
+                  className="primary"
+                  onClick={() => {
+                    setError("");
+                    setAddingCase(true);
+                  }}
+                >
+                  New case
+                </button>
+              </div>
             </div>
+            {addingFactory && (
+              <form className="panel-pad admin-form" onSubmit={saveFactory}>
+                <h2>Add factory</h2>
+                <label>
+                  Factory name
+                  <input
+                    required
+                    maxLength={200}
+                    value={factoryName}
+                    onChange={(event) => setFactoryName(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Factory address
+                  <textarea
+                    required
+                    maxLength={500}
+                    rows={3}
+                    value={factoryAddress}
+                    onChange={(event) => setFactoryAddress(event.target.value)}
+                  />
+                </label>
+                {error && <ErrorNote text={error} />}
+                <button className="primary" disabled={busy}>
+                  Save factory
+                </button>
+              </form>
+            )}
             {factories.isLoading && <Busy />}
             {factories.error && <ErrorNote text={message(factories.error)} />}
             {factories.data?.map((factory) => (
@@ -368,7 +442,7 @@ export function AdminWorkspace({
             <div className="section-head">
               <div>
                 <h1>Factory assignments</h1>
-                <p>Choose a reviewer and the factories they can access.</p>
+                <p>Choose a factory first, then assign an active reviewer.</p>
               </div>
             </div>
             <div className="panel-pad admin-form">
@@ -376,61 +450,76 @@ export function AdminWorkspace({
               {reviewers.error && <ErrorNote text={message(reviewers.error)} />}
               {factories.error && <ErrorNote text={message(factories.error)} />}
               <label>
-                Reviewer
+                Factory
                 <select
-                  value={assigneeId}
-                  disabled={busy || !assignees.length}
+                  value={assignmentFactoryId}
+                  disabled={busy || !factories.data?.length}
                   onChange={(event) => {
-                    setAssigneeId(event.target.value);
+                    setAssignmentFactoryId(event.target.value);
+                    setAssigneeId("");
                     setAssignmentSaved(false);
                     setError("");
                   }}
                 >
-                  <option value="">Choose a reviewer</option>
-                  {assignees.map((row) => (
+                  <option value="">Choose a factory</option>
+                  {factories.data?.map((row) => (
                     <option key={row.id} value={row.id}>
-                      {row.full_name} · {row.email}
+                      {row.name}
                     </option>
                   ))}
                 </select>
               </label>
+              {!factories.isLoading &&
+                !factories.error &&
+                !factories.data?.length && (
+                  <p>
+                    No factories available. Add a factory in the Factories page
+                    first.
+                  </p>
+                )}
+              {assignmentFactory && (
+                <>
+                  <label>
+                    Reviewer
+                    <select
+                      value={assigneeId}
+                      disabled={busy || !assignees.length}
+                      onChange={(event) => {
+                        setAssigneeId(event.target.value);
+                        setAssignmentSaved(false);
+                        setError("");
+                      }}
+                    >
+                      <option value="">Choose an active reviewer</option>
+                      {assignees.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.full_name} · {row.email}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              )}
               {!reviewers.isLoading &&
                 !reviewers.error &&
+                assignmentFactory &&
                 !assignees.length && <p>No active reviewers available.</p>}
-              {assignee && factories.isSuccess && (
-                <form
-                  key={assignee.id}
-                  className="admin-form"
-                  onSubmit={saveAssignments}
-                  onChange={() => setAssignmentSaved(false)}
-                >
-                  <fieldset disabled={busy}>
-                    <legend>Factories</legend>
-                    {factories.data.map((factory) => (
-                      <label
-                        className="inline-actions"
-                        style={{ display: "flex" }}
-                        key={factory.id}
-                      >
-                        <input
-                          type="checkbox"
-                          name="factory_ids"
-                          value={factory.id}
-                          defaultChecked={assignee.reviewer_factories.some(
-                            (row) => row.factory_id === factory.id,
-                          )}
-                        />
-                        {factory.name}
-                      </label>
-                    ))}
-                  </fieldset>
-                  <div>
-                    <button className="primary" disabled={busy}>
-                      Save assignments
-                    </button>
-                  </div>
-                  {assignmentSaved && <p role="status">Assignments saved.</p>}
-                </form>
+              {assignmentFactory && assignee && (
+                <div className="admin-form">
+                  <p>
+                    {assignee.full_name} is{" "}
+                    {hasAssignment ? "assigned to" : "not assigned to"}{" "}
+                    {assignmentFactory.name}.
+                  </p>
+                  <button
+                    className={hasAssignment ? undefined : "primary"}
+                    disabled={busy}
+                    onClick={() => void toggleAssignment()}
+                  >
+                    {hasAssignment ? "Remove assignment" : "Assign reviewer"}
+                  </button>
+                  {assignmentSaved && <p role="status">Assignment updated.</p>}
+                </div>
               )}
             </div>
           </section>
