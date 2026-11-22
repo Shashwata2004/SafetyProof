@@ -951,7 +951,6 @@ function Upload({
         )}
         {extracted && !extractError && (
           <p className="hint" role="status">
-            Read {extracted.readable_pages} of {extracted.pages_checked} pages.
             Check the extracted fields before uploading; missing fields can be
             entered manually.
           </p>
