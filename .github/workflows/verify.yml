@@ -9,13 +9,13 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r backend/requirements-dev.lock
-      - run: npx --yes supabase@2.98.2 start --exclude studio,imgproxy,realtime,postgres-meta,logflare,vector,edge-runtime,supavisor,mailpit > /tmp/safetyproof-supabase.log 2>&1
+      - run: npx --yes supabase@3.2.0 start --exclude studio,imgproxy,realtime,postgres-meta,logflare,vector,edge-runtime,supavisor,mailpit > /tmp/safetyproof-supabase.log 2>&1 || { cat /tmp/safetyproof-supabase.log; exit 1; }
       - run: |
           mkdir -p .local/tessdata
           for lang in eng ben; do
             curl -fsS "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/$lang.traineddata" -o ".local/tessdata/$lang.traineddata"
           done
-          python scripts/local_setup.py
+          python scripts/ci_supabase_setup.py
       - run: PYTHONPATH=backend pytest -q backend/tests
   frontend:
     runs-on: ubuntu-latest
