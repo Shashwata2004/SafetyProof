@@ -459,7 +459,10 @@ export function AdminWorkspace({
                 </p>
               </div>
             </div>
-            <div className="panel-pad admin-form">
+            <form
+              className="panel-pad admin-form"
+              onSubmit={createCase}
+            >
               {reviewers.isLoading && <Busy />}
               {reviewers.error && <ErrorNote text={message(reviewers.error)} />}
               {factories.error && <ErrorNote text={message(factories.error)} />}
@@ -491,32 +494,27 @@ export function AdminWorkspace({
                     first.
                   </p>
                 )}
-              {assignmentFactory && (
-                <>
-                  <label>
-                    Reviewer
-                    <select
-                      value={assigneeId}
-                      disabled={busy || !assignees.length}
-                      onChange={(event) => {
-                        setAssigneeId(event.target.value);
-                        setAssignmentSaved(false);
-                        setError("");
-                      }}
-                    >
-                      <option value="">Choose an active reviewer</option>
-                      {assignees.map((row) => (
-                        <option key={row.id} value={row.id}>
-                          {row.full_name} · {row.email}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              )}
+              <label>
+                Reviewer
+                <select
+                  value={assigneeId}
+                  disabled={busy || !assignees.length}
+                  onChange={(event) => {
+                    setAssigneeId(event.target.value);
+                    setAssignmentSaved(false);
+                    setError("");
+                  }}
+                >
+                  <option value="">Choose an active reviewer</option>
+                  {assignees.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.full_name} · {row.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {!reviewers.isLoading &&
                 !reviewers.error &&
-                assignmentFactory &&
                 !assignees.length && <p>No active reviewers available.</p>}
               {assignmentFactory && assignee && (
                 <div className="admin-form">
@@ -528,6 +526,7 @@ export function AdminWorkspace({
                   <button
                     className={hasAssignment ? undefined : "primary"}
                     disabled={busy}
+                    type="button"
                     onClick={() => void toggleAssignment()}
                   >
                     {hasAssignment ? "Remove assignment" : "Assign reviewer"}
@@ -535,45 +534,46 @@ export function AdminWorkspace({
                   {assignmentSaved && <p role="status">Assignment updated.</p>}
                 </div>
               )}
-              {assignmentFactory && assignee && (
-                <form className="admin-form" onSubmit={createCase}>
-                  <h2>Schedule inspection</h2>
-                  <label>
-                    Case title
-                    <input
-                      name="title"
-                      maxLength={160}
-                      required
-                      placeholder="e.g. April safety review"
-                    />
-                  </label>
-                  <label>
-                    Inspection programme <small>Optional</small>
-                    <input name="programme" maxLength={120} />
-                  </label>
-                  <label>
-                    Inspection date
-                    <input name="inspection_on" type="date" required />
-                  </label>
-                  <p className="hint">
-                    Scheduling creates the review case and adds a notice with
-                    this date to the factory manager’s dashboard.
-                  </p>
-                  {!hasAssignment && (
-                    <p className="hint">
-                      Assign this reviewer to the selected factory before
-                      scheduling the inspection.
-                    </p>
-                  )}
-                  <button
-                    className="primary"
-                    disabled={busy || !hasAssignment}
-                  >
-                    {busy ? "Scheduling…" : "Assign case and notify factory"}
-                  </button>
-                </form>
+              <h2>Schedule inspection</h2>
+              <label>
+                Case title
+                <input
+                  name="title"
+                  maxLength={160}
+                  required
+                  placeholder="e.g. April safety review"
+                />
+              </label>
+              <label>
+                Inspection programme <small>Optional</small>
+                <input name="programme" maxLength={120} />
+              </label>
+              <label>
+                Inspection date
+                <input name="inspection_on" type="date" required />
+              </label>
+              <p className="hint">
+                Scheduling creates the review case and adds a notice with this
+                date to the factory manager’s dashboard.
+              </p>
+              {(!assignmentFactory || !assignee) && (
+                <p className="hint">
+                  Choose a factory and an active reviewer to continue.
+                </p>
               )}
-            </div>
+              {assignmentFactory && assignee && !hasAssignment && (
+                <p className="hint">
+                  Assign this reviewer to the selected factory before
+                  scheduling the inspection.
+                </p>
+              )}
+              <button
+                className="primary"
+                disabled={busy || !assignmentFactory || !assignee || !hasAssignment}
+              >
+                {busy ? "Scheduling…" : "Assign case and notify factory"}
+              </button>
+            </form>
           </section>
         )}
         {view === "manager-applications" && (
