@@ -690,6 +690,7 @@ export function FactoryDocuments({
   refresh: () => Promise<void>;
 }) {
   const [upload, setUpload] = useState(false);
+  const [inspect, setInspect] = useState<{ version: Version; title: string } | null>(null);
   const reports = d.versions.filter((version) =>
     d.documents.some(
       (doc) => doc.id === version.document_id && doc.role === "inspection",
@@ -737,11 +738,9 @@ export function FactoryDocuments({
             </div>
             {processed(version) ? (
               <button
-                onClick={() =>
-                  preview({ title: doc.title, version: version.id })
-                }
+                onClick={() => setInspect({ version, title: doc.title })}
               >
-                Open PDF
+                Open report
               </button>
             ) : (
               <Tag>{version.status.replaceAll("_", " ")}</Tag>
@@ -758,6 +757,15 @@ export function FactoryDocuments({
             setUpload(false);
             await refresh();
           }}
+        />
+      )}
+      {inspect && (
+        <Inspect
+          version={inspect.version}
+          title={inspect.title}
+          token={token}
+          close={() => setInspect(null)}
+          preview={preview}
         />
       )}
     </section>
