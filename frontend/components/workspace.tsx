@@ -214,6 +214,7 @@ function App() {
           <Login
             auth={auth}
             restoring={restoring}
+            email={params.get("email") || ""}
             error={
               identity.error
                 ? message(identity.error)
@@ -741,11 +742,13 @@ function SampleFiles({
 function Login({
   auth,
   restoring,
+  email,
   error,
   workspace,
 }: {
   auth: SupabaseClient | null;
   restoring: boolean;
+  email: string;
   error?: string;
   workspace: "factory_manager" | "reviewer";
 }) {
@@ -787,6 +790,7 @@ function Login({
           type="email"
           required
           autoComplete="username"
+          defaultValue={email}
         />
       </label>
       <PasswordField id="sign-in-password" />

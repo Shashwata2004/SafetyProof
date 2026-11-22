@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { api, apiBase, message } from "@/lib/api";
 import { ErrorNote, PasswordField } from "./ui";
 import { AccountMenu } from "./account-menu";
@@ -66,14 +67,39 @@ export function SetPassword() {
     event.preventDefault();
     setError("");
     setStatus("saving");
+    let passwordSaved = false;
+    let auth: SupabaseClient | null = null;
     try {
       const password = passwords(new FormData(event.currentTarget));
+      const config = await api<{
+        supabase_url: string;
+        publishable_key: string;
+      }>("/v1/config");
+      auth = createClient(config.supabase_url, config.publishable_key);
       await api("/v1/invites/set-password", undefined, "POST", {
         token,
         password,
       });
-      window.location.replace("/?password=updated");
+      passwordSaved = true;
+      const session = await api<{
+        access_token: string;
+        refresh_token: string;
+      }>("/v1/login", undefined, "POST", {
+        email,
+        password,
+        workspace: "reviewer",
+      });
+      const { error } = await auth.auth.setSession(session);
+      if (error) throw error;
+      window.location.replace("/");
     } catch (error) {
+      if (passwordSaved) {
+        await auth?.auth.signOut().catch(() => undefined);
+        window.location.replace(
+          `/?password=updated&email=${encodeURIComponent(email)}`,
+        );
+        return;
+      }
       setError(message(error));
       setStatus("ready");
     }
@@ -93,6 +119,8 @@ export function SetPassword() {
                 autoComplete="username"
                 value={email}
                 readOnly
+                aria-readonly="true"
+                className="fixed-email"
               />
             </label>
             <PasswordFields />
