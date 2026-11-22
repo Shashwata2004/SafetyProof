@@ -361,7 +361,7 @@ async def reserve_upload(
     if case.get("inspection_on"):
         if u.role == "reviewer" and body.role != "inspection":
             raise HTTPException(
-                422, "Reviewers can upload inspection reports only for this case."
+                403, "Reviewers can upload inspection reports only for this case."
             )
         if u.role == "factory_manager" and body.role == "inspection":
             raise HTTPException(
@@ -445,10 +445,21 @@ async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depen
                     v.get("filename") or "inspection.pdf",
                     case["inspection_on"],
                 )
-                if metadata["inspection_date"] != case["inspection_on"]:
+                if (
+                    metadata["inspection_date"]
+                    and metadata["inspection_date"] != case["inspection_on"]
+                ):
                     raise HTTPException(
                         422,
                         "The PDF inspection date must match the date scheduled by the admin.",
+                    )
+                if (
+                    not metadata["inspection_date"]
+                    and v.get("issued_on") != case["inspection_on"]
+                ):
+                    raise HTTPException(
+                        422,
+                        "Enter the admin-scheduled inspection date when OCR cannot read it from the PDF.",
                     )
                 content_check = await check_inspection_content(
                     parsed["pages"],

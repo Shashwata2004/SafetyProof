@@ -112,7 +112,8 @@ def extract_metadata(pages, filename, scheduled_date=None):
     ):
         role = "sop"
     elif re.search(
-        r"\b(inspection report|inspection review|safety inspection|inspection date)\b",
+        r"\b(inspection report|inspection review|safety inspection|inspection date|"
+        r"inspection)\b",
         header,
     ):
         role = "inspection"

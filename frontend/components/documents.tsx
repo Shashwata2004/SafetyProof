@@ -765,25 +765,37 @@ function Upload({
     ["valid", "invalid", "uncertain", "unavailable"].includes(
       extracted.content_check,
     );
+  const inspectionDateMismatch =
+    inspection &&
+    !!extracted?.inspection_date &&
+    extracted.inspection_date !== d.case.inspection_on;
+  const submittedInspectionDateMismatch =
+    inspection && !!issuedOn && issuedOn !== d.case.inspection_on;
   const invalidInspectionPdf =
     inspection &&
     !!extracted &&
-    (semanticCheckRan
-      ? extracted.content_check !== "valid"
-      : extracted.readable_pages > 0 && extracted.role !== "inspection");
+    (inspectionDateMismatch ||
+      submittedInspectionDateMismatch ||
+      (semanticCheckRan
+        ? extracted.content_check !== "valid"
+        : extracted.readable_pages > 0 && extracted.role !== "inspection"));
   const semanticFailureMessage =
     extracted?.content_check === "unavailable"
       ? "Gemini could not complete the content check. Check the server configuration and retry."
       : extracted?.content_check === "uncertain"
         ? `The report content could not be confirmed: ${extracted.content_reason || "the text is too ambiguous or incomplete."} Choose a clearer inspection report PDF.`
         : `Invalid document: ${extracted?.content_reason || "the content is not an inspection report."} Choose a relevant inspection report PDF.`;
-  const invalidInspectionMessage = !extracted
-    ? ""
-    : semanticCheckRan
-      ? semanticFailureMessage
-      : extracted.role === "other"
-        ? "Invalid document: the readable PDF could not be identified as an inspection report. Choose an inspection report PDF."
-        : `Invalid document: this PDF was identified as “${roles[extracted.role]}”. Reviewers can upload inspection reports only.`;
+  const invalidInspectionMessage = inspectionDateMismatch
+    ? `Invalid document: the PDF inspection date (${extracted?.inspection_date}) does not match the date scheduled by the admin (${d.case.inspection_on}). Choose the correct report PDF.`
+    : submittedInspectionDateMismatch
+      ? `The inspection date must match the date scheduled by the admin (${d.case.inspection_on}).`
+      : !extracted
+        ? ""
+        : semanticCheckRan
+          ? semanticFailureMessage
+          : extracted.role === "other"
+            ? "Invalid document: the readable PDF could not be identified as an inspection report. Choose an inspection report PDF."
+            : `Invalid document: this PDF was identified as “${roles[extracted.role]}”. Reviewers can upload inspection reports only.`;
   const permitted = Object.entries(roles).filter(
     ([key]) =>
       !scheduled ||
@@ -819,7 +831,6 @@ function Upload({
         "POST",
         body,
       );
-      if (result.title) setTitle(result.title);
       const semanticCheckRan = [
         "valid",
         "invalid",
@@ -831,20 +842,34 @@ function Upload({
         (semanticCheckRan
           ? result.content_check === "valid"
           : result.readable_pages === 0 || result.role === "inspection");
+      const extractedInspectionDateMismatch =
+        inspection &&
+        !!result.inspection_date &&
+        result.inspection_date !== d.case.inspection_on;
+      if (
+        validInspectionSource &&
+        !extractedInspectionDateMismatch &&
+        result.title
+      )
+        setTitle(result.title);
       setIssuedOn(
-        validInspectionSource
+        validInspectionSource && !extractedInspectionDateMismatch
           ? (inspection && result.inspection_date) || result.issued_on || ""
           : "",
       );
       // If the PDF gives a single inspection date but no reporting-period
       // start, use that dated visit as the start. Never invent a period end.
       setPeriodStart(
-        validInspectionSource
+        validInspectionSource && !extractedInspectionDateMismatch
           ? result.period_start ||
               (inspection ? result.inspection_date || "" : "")
           : "",
       );
-      setPeriodEnd(validInspectionSource ? result.period_end || "" : "");
+      setPeriodEnd(
+        validInspectionSource && !extractedInspectionDateMismatch
+          ? result.period_end || ""
+          : "",
+      );
       if (!scheduled && result.issuer) setIssuer(result.issuer);
       const inferredRole = permitted.some(([key]) => key === result.role)
         ? result.role
@@ -989,11 +1014,19 @@ function Upload({
             report.
           </p>
         )}
-        {extracted?.warnings.map((warning) => (
-          <p className="callout" role="alert" key={warning}>
-            {warning}
-          </p>
-        ))}
+        {extracted?.warnings
+          .filter(
+            (warning) =>
+              !(
+                inspection &&
+                warning.includes("does not match the date scheduled")
+              ),
+          )
+          .map((warning) => (
+            <p className="callout" role="alert" key={warning}>
+              {warning}
+            </p>
+          ))}
         {invalidInspectionPdf && (
           <p className="callout invalid-document" role="alert">
             {invalidInspectionMessage}

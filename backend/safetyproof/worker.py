@@ -14,13 +14,13 @@ from .platform import PlatformError
 from .verify import run_verification
 
 log = logging.getLogger(__name__)
-def check_inspection_date(pages, declared_date):
+def check_inspection_date(pages, declared_date, submitted_date=None):
     metadata = extract_metadata(pages, "inspection-report.pdf")
     actual = metadata["inspection_date"]
     if not actual:
-        raise ValueError(
-            "No readable inspection date was found in the first eight pages. Label it 'Inspection date: YYYY-MM-DD' and upload the report again."
-        )
+        if submitted_date == declared_date:
+            return
+        raise ValueError("Enter the scheduled inspection date when OCR cannot read it.")
     if actual != declared_date:
         raise ValueError(
             f"The PDF inspection date ({actual}) does not match the date scheduled by the admin ({declared_date})."
@@ -97,7 +97,11 @@ async def process(db, ai, cfg, job):
                     data, v["id"], cfg.tessdata_prefix, offset, 8
                 )
                 if scheduled_inspection_date and offset == 0:
-                    check_inspection_date(parsed["pages"], scheduled_inspection_date)
+                    check_inspection_date(
+                        parsed["pages"],
+                        scheduled_inspection_date,
+                        v.get("issued_on"),
+                    )
                 await db.rpc(
                     "ingest_batch", jid=job["id"], ticket=job["lease"], batch=parsed
                 )
