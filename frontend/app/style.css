@@ -1055,6 +1055,39 @@ input[type="checkbox"] {
   font-size: 13px;
   margin-top: 8px;
 }
+.header-cluster-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.header-cluster-title > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.header-cluster-title small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.header-cluster-pages {
+  margin-top: 8px;
+}
+.header-cluster-page + .header-cluster-page {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.header-cluster-page h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.header-cluster-page pre {
+  margin-bottom: 0;
+}
 .print-sheet {
   display: none;
 }

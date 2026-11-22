@@ -546,6 +546,27 @@ export function JobRow({ job: j, retry }: { job: Job; retry?: () => void }) {
   );
 }
 
+function pageHeader(text: string) {
+  return (
+    text
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .find(Boolean) || "Header unavailable"
+  );
+}
+
+function clusterPagesByHeader(pages: PageInfo[]) {
+  const clusters = new Map<string, { header: string; pages: PageInfo[] }>();
+  for (const page of pages) {
+    const header = pageHeader(page.text);
+    const key = header.toLocaleLowerCase();
+    const cluster = clusters.get(key) ?? { header, pages: [] };
+    cluster.pages.push(page);
+    clusters.set(key, cluster);
+  }
+  return [...clusters.values()];
+}
+
 function Inspect({
   version: v,
   title,
@@ -559,16 +580,11 @@ function Inspect({
   close: () => void;
   preview: (p: Preview) => void;
 }) {
-  const [pageOffset, setPageOffset] = useState(0);
-  const pageBatch = 8;
   const q = useQuery({
-    queryKey: ["pages", v.id, pageOffset],
-    queryFn: () =>
-      api<PageInfo[]>(
-        `/v1/document-versions/${v.id}/pages?offset=${pageOffset}&limit=${pageBatch}`,
-        token,
-      ),
+    queryKey: ["pages", v.id],
+    queryFn: () => api<PageInfo[]>(`/v1/document-versions/${v.id}/pages`, token),
   });
+  const clusters = clusterPagesByHeader(q.data ?? []);
   return (
     <Modal title={title} close={close}>
       <div className="inline-actions">
@@ -582,38 +598,31 @@ function Inspect({
           Open original PDF <ChevronRight size={14} />
         </button>
       </div>
-      {v.page_count > pageBatch && (
-        <div className="inline-actions">
-          <button
-            disabled={pageOffset === 0}
-            onClick={() => setPageOffset(pageOffset - pageBatch)}
-          >
-            Previous pages
-          </button>
-          <span aria-live="polite">
-            Pages {pageOffset + 1}–
-            {Math.min(pageOffset + pageBatch, v.page_count)} of {v.page_count}
-          </span>
-          <button
-            disabled={pageOffset + pageBatch >= v.page_count}
-            onClick={() => setPageOffset(pageOffset + pageBatch)}
-          >
-            Next pages
-          </button>
-        </div>
-      )}
       {q.isLoading ? (
         <Busy />
       ) : q.error ? (
         <ErrorNote text={message(q.error)} />
       ) : (
-        q.data?.map((p) => (
-          <details className="page-text" key={p.id} open={q.data.length === 1}>
-            <summary>
-              Page {p.page_no} · {p.method === "ocr" ? "OCR" : "Digital text"} ·{" "}
-              {p.quality}
+        clusters.map((cluster, index) => (
+          <details
+            className="page-text header-cluster"
+            key={`${cluster.header}-${index}`}
+            open={clusters.length === 1}
+          >
+            <summary className="header-cluster-title">
+              <span>{cluster.header}</span>
+              <small>{cluster.pages.length} {cluster.pages.length === 1 ? "page" : "pages"}</small>
             </summary>
-            <pre>{p.text || "No readable text."}</pre>
+            <div className="header-cluster-pages">
+              {cluster.pages.map((page) => (
+                <section className="header-cluster-page" key={page.id}>
+                  <h3>
+                    Page {page.page_no} · {page.method === "ocr" ? "OCR" : "Digital text"} · {page.quality}
+                  </h3>
+                  <pre>{page.text || "No readable text."}</pre>
+                </section>
+              ))}
+            </div>
           </details>
         ))
       )}
