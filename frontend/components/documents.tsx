@@ -749,6 +749,16 @@ function Upload({
     [attempt, setAttempt] = useState(() => crypto.randomUUID());
   const scheduled = !!d.case.inspection_on;
   const inspection = scheduled && d.role === "reviewer";
+  const invalidInspectionPdf =
+    inspection &&
+    !!extracted &&
+    extracted.readable_pages > 0 &&
+    extracted.role !== "inspection";
+  const invalidInspectionMessage = extracted
+    ? extracted.role === "other"
+      ? "Invalid document: the readable PDF could not be identified as an inspection report. Choose an inspection report PDF."
+      : `Invalid document: this PDF was identified as “${roles[extracted.role]}”. Reviewers can upload inspection reports only.`
+    : "";
   const permitted = Object.entries(roles).filter(
     ([key]) =>
       !scheduled ||
@@ -800,7 +810,7 @@ function Upload({
         ? result.role
         : null;
       const warnings = [...result.warnings];
-      if (!inferredRole) {
+      if (!inferredRole && !(inspection && result.role !== "inspection")) {
         warnings.push(
           `OCR identified this as “${roles[result.role]}”, which is not allowed ` +
             "for this case. Check the PDF and enter the permitted document " +
@@ -824,7 +834,7 @@ function Upload({
   }
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!file) return;
+    if (!file || invalidInspectionPdf) return;
     setBusy(true);
     setErr("");
     const form = new FormData(e.currentTarget);
@@ -926,6 +936,11 @@ function Upload({
             {warning}
           </p>
         ))}
+        {invalidInspectionPdf && (
+          <p className="callout" role="alert">
+            {invalidInspectionMessage}
+          </p>
+        )}
         <label>
           Document title
           <input
@@ -1036,7 +1051,10 @@ function Upload({
           <button type="button" disabled={busy} onClick={close}>
             Cancel
           </button>
-          <button className="primary" disabled={busy || extracting || !file}>
+          <button
+            className="primary"
+            disabled={busy || extracting || !file || invalidInspectionPdf}
+          >
             {busy ? stage : "Upload document"}
           </button>
         </div>

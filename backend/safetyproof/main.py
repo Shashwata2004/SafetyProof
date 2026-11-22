@@ -356,7 +356,16 @@ async def delete_case(
 async def reserve_upload(
     cid: UUID, body: UploadInput, u: User = Depends(user), d=Depends(db)
 ):
-    await d.one("cases", cid, token=u.token)
+    case = await d.one("cases", cid, token=u.token)
+    if case.get("inspection_on"):
+        if u.role == "reviewer" and body.role != "inspection":
+            raise HTTPException(
+                422, "Reviewers can upload inspection reports only for this case."
+            )
+        if u.role == "factory_manager" and body.role == "inspection":
+            raise HTTPException(
+                422, "Factory managers cannot upload reviewer inspection reports."
+            )
     version = await d.rpc(
         "reserve", cid=str(cid), actor_id=u.id, data=body.model_dump(mode="json")
     )
