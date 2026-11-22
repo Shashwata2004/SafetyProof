@@ -415,11 +415,12 @@ def account_router(user, db_dep):
         scheduled = await db.rows(
             "cases",
             token=u.token,
-            fields="id,title,inspection_on,reviewer_id",
+            fields="id,title,inspection_on,reviewer_id,manager_notified_at",
             filters={
                 "inspection_on": "not.is.null",
                 "archived": "eq.false",
                 "deleting": "eq.false",
+                "manager_notified_at": "not.is.null",
             },
             order="inspection_on,id",
         )
@@ -441,6 +442,7 @@ def account_router(user, db_dep):
                 "case_id": item["id"],
                 "title": item["title"],
                 "inspection_on": item["inspection_on"],
+                "notified_at": item["manager_notified_at"],
                 "reviewer_name": profiles.get(item["reviewer_id"], {}).get("full_name"),
                 "organization": profiles.get(item["reviewer_id"], {}).get(
                     "organization"
@@ -768,6 +770,36 @@ def account_router(user, db_dep):
             data=body.model_dump(mode="json", exclude={"reviewer_id"}),
         )
 
+    @router.post("/admin/cases/{cid}/notify-manager")
+    async def notify_case_manager(cid: UUID, u=Depends(admin), db=Depends(db_dep)):
+        case = await db.one(
+            "cases",
+            cid,
+            fields="id,factory_id,inspection_on,archived,deleting",
+        )
+        if case["archived"] or case["deleting"] or not case["inspection_on"]:
+            raise HTTPException(409, "This inspection is not available for notification.")
+        managers = await db.rows(
+            "account_profiles",
+            fields="id",
+            filters={
+                "factory_id": "eq." + case["factory_id"],
+                "role": "eq.factory_manager",
+                "status": "eq.active",
+            },
+        )
+        if not managers:
+            raise HTTPException(409, "This factory has no active manager to notify.")
+        notified_at = datetime.now(UTC).isoformat()
+        await db.call(
+            "PATCH",
+            "/rest/v1/cases",
+            admin=True,
+            params={"id": "eq." + str(cid)},
+            data={"manager_notified_at": notified_at},
+        )
+        return {"notified": len(managers), "notified_at": notified_at}
+
     @router.get("/admin/cases/{cid}")
     async def admin_case(cid: UUID, u=Depends(admin), db=Depends(db_dep)):
         import asyncio
@@ -825,7 +857,7 @@ def account_router(user, db_dep):
     async def scheduled_inspections(u=Depends(admin), db=Depends(db_dep)):
         cases = await db.rows(
             "cases",
-            fields="id,title,factory,programme,inspection_on,reviewer_id,created_at",
+            fields="id,title,factory,programme,inspection_on,reviewer_id,created_at,manager_notified_at",
             filters={
                 "inspection_on": "not.is.null",
                 "archived": "eq.false",

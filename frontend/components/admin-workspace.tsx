@@ -74,6 +74,7 @@ type ScheduledInspection = {
   inspection_on: string;
   reviewer_name: string | null;
   reviewer_organization: string | null;
+  manager_notified_at: string | null;
   report_status: "scheduled" | "in_progress" | "complete" | "needs_attention";
 };
 type View =
@@ -105,6 +106,8 @@ export function AdminWorkspace({
   const [assigneeId, setAssigneeId] = useState("");
   const [assignmentFactoryId, setAssignmentFactoryId] = useState("");
   const [assignmentSaved, setAssignmentSaved] = useState(false);
+  const [pendingNotifyCaseId, setPendingNotifyCaseId] = useState("");
+  const [notificationMessage, setNotificationMessage] = useState("");
   const [selected, setSelected] = useState("");
   const [caseId, setCaseId] = useState("");
   const details = useQuery({
@@ -250,8 +253,26 @@ export function AdminWorkspace({
           programme: fields.programme || null,
         },
       );
-      setCaseId(created.id);
+      setPendingNotifyCaseId(created.id);
+      setNotificationMessage(
+        "Inspection assigned. The factory manager has not been notified.",
+      );
       await factories.refetch();
+    });
+  }
+
+  async function notifyManager(caseToNotify: string) {
+    await perform(async () => {
+      const result = await api<{ notified: number }>(
+        `/v1/admin/cases/${caseToNotify}/notify-manager`,
+        token,
+        "POST",
+      );
+      setNotificationMessage(
+        `Notice sent to ${result.notified} factory manager${result.notified === 1 ? "" : "s"}.`,
+      );
+      if (pendingNotifyCaseId === caseToNotify) setPendingNotifyCaseId("");
+      await scheduledInspections.refetch();
     });
   }
 
@@ -563,8 +584,9 @@ export function AdminWorkspace({
                 <input name="inspection_on" type="date" required />
               </label>
               <p className="hint">
-                Scheduling creates the review case and adds a notice with this
-                date to the factory manager’s dashboard.
+                Assigning the inspection creates the case. You can notify the
+                factory manager separately if you want them to see a dashboard
+                notice.
               </p>
               {(!assignmentFactory || !assignee) && (
                 <p className="hint">
@@ -589,9 +611,19 @@ export function AdminWorkspace({
                   className="primary"
                   disabled={busy || !assignmentFactory || !assignee || !hasAssignment}
                 >
-                  {busy ? "Scheduling…" : "Assign case and notify factory"}
+                  {busy ? "Assigning…" : "Assign case"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !pendingNotifyCaseId}
+                  onClick={() => void notifyManager(pendingNotifyCaseId)}
+                >
+                  Notify factory manager (optional)
                 </button>
               </div>
+              {notificationMessage && (
+                <p role="status">{notificationMessage}</p>
+              )}
             </form>
           </section>
         )}
@@ -643,6 +675,16 @@ export function AdminWorkspace({
                           ? "Report needs attention"
                           : "Scheduled"}
                   </Tag>
+                  {item.manager_notified_at ? (
+                    <Tag tone="green">Manager notified</Tag>
+                  ) : (
+                    <button
+                      disabled={busy}
+                      onClick={() => void notifyManager(item.id)}
+                    >
+                      Notify manager
+                    </button>
+                  )}
                   <button onClick={() => setCaseId(item.id)}>View case</button>
                 </div>
               </div>
