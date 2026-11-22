@@ -825,6 +825,7 @@ function Upload({
     [attempt, setAttempt] = useState(() => crypto.randomUUID());
   const scheduled = !!d.case.inspection_on;
   const inspection = scheduled && d.role === "reviewer";
+  const factoryRecord = scheduled && d.role === "manager";
   const semanticCheckRan =
     !!extracted &&
     ["valid", "invalid", "uncertain", "unavailable"].includes(
@@ -844,6 +845,16 @@ function Upload({
       (semanticCheckRan
         ? extracted.content_check !== "valid"
         : extracted.readable_pages > 0 && extracted.role !== "inspection"));
+  const invalidFactoryRecord =
+    factoryRecord &&
+    !!extracted &&
+    extracted.content_check !== "valid" &&
+    !(
+      extracted.content_check === "not_configured" &&
+      extracted.readable_pages > 0 &&
+      extracted.role === role
+    );
+  const invalidDocument = invalidInspectionPdf || invalidFactoryRecord;
   const semanticFailureMessage =
     extracted?.content_check === "unavailable"
       ? "Gemini could not complete the content check. Check the server configuration and retry."
@@ -861,6 +872,21 @@ function Upload({
           : extracted.role === "other"
             ? "Invalid document: the readable PDF could not be identified as an inspection report. Choose an inspection report PDF."
             : `Invalid document: this PDF was identified as “${roles[extracted.role]}”. Reviewers can upload inspection reports only.`;
+  const invalidFactoryRecordMessage =
+    extracted?.content_check === "invalid"
+      ? `Invalid document: ${extracted.content_reason || "the PDF does not contain the selected factory record type."} Choose the correct record type or a different PDF.`
+      : extracted?.content_check === "uncertain"
+        ? `The selected factory record type could not be confirmed: ${extracted.content_reason || "the PDF text is too ambiguous or incomplete."} Choose a clearer PDF.`
+        : extracted?.content_check === "unavailable"
+          ? extracted.content_reason || "Gemini could not check this factory document. Retry when the service is available."
+          : extracted?.content_check === "unreadable"
+            ? "Invalid document: no readable text was found, so its factory record type cannot be checked. Choose a readable PDF."
+            : extracted?.content_check === "not_configured" && extracted.role !== role
+              ? `OCR identified this as “${roles[extracted.role]}”, not “${roles[role]}”. Choose the matching document role or a different PDF.`
+              : extracted?.content_reason || "This PDF could not be checked as a factory record.";
+  const validationMessage = factoryRecord
+    ? invalidFactoryRecordMessage
+    : invalidInspectionMessage;
   const permitted = Object.entries(roles).filter(
     ([key]) =>
       !scheduled ||
@@ -872,7 +898,7 @@ function Upload({
     ? new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10)
     : undefined;
   const bounds = inspection ? { min: `${month}-01`, max: monthEnd } : {};
-  async function readPdf(selected: File | null) {
+  async function readPdf(selected: File | null, expectedRole: Role = role) {
     setFile(selected);
     setExtractError("");
     setExtracted(null);
@@ -890,6 +916,7 @@ function Upload({
     try {
       const body = new FormData();
       body.append("file", selected);
+      if (factoryRecord) body.append("role", expectedRole);
       const result = await api<ExtractedMetadata>(
         `/v1/cases/${d.case.id}/inspect-upload`,
         token,
@@ -902,6 +929,14 @@ function Upload({
         "uncertain",
         "unavailable",
       ].includes(result.content_check);
+      const inferredRole = permitted.some(([key]) => key === result.role)
+        ? result.role
+        : null;
+      if (factoryRecord && inferredRole && inferredRole !== expectedRole) {
+        setRole(inferredRole);
+        await readPdf(selected, inferredRole);
+        return;
+      }
       const validInspectionSource =
         !inspection ||
         (semanticCheckRan
@@ -941,11 +976,21 @@ function Upload({
           : "",
       );
       if (!scheduled && result.issuer) setIssuer(result.issuer);
-      const inferredRole = permitted.some(([key]) => key === result.role)
-        ? result.role
-        : null;
       const warnings = [...result.warnings];
-      if (!inferredRole && !(inspection && result.role !== "inspection")) {
+      if (
+        factoryRecord &&
+        result.content_check === "not_configured" &&
+        result.readable_pages > 0 &&
+        result.role !== expectedRole
+      ) {
+        warnings.push(
+          `OCR identified this as “${roles[result.role]}”, but the selected role is “${roles[expectedRole]}”.`,
+        );
+      } else if (
+        !factoryRecord &&
+        !inferredRole &&
+        !(inspection && result.role !== "inspection")
+      ) {
         warnings.push(
           `OCR identified this as “${roles[result.role]}”, which is not allowed ` +
             "for this case. Check the PDF and enter the permitted document " +
@@ -953,10 +998,11 @@ function Upload({
         );
       }
       setExtracted({ ...result, warnings });
-      if (inferredRole) setRole(inferredRole);
+      if (!factoryRecord && inferredRole) setRole(inferredRole);
+      const matchedRole = factoryRecord ? expectedRole : inferredRole || role;
       const matched = d.documents.find(
         (item) =>
-          item.role === (inferredRole || role) &&
+          item.role === matchedRole &&
           item.title.trim().toLowerCase() ===
             (result.title || "").trim().toLowerCase(),
       );
@@ -969,7 +1015,7 @@ function Upload({
   }
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!file || invalidInspectionPdf) return;
+    if (!file || invalidDocument) return;
     setBusy(true);
     setErr("");
     const form = new FormData(e.currentTarget);
@@ -1054,8 +1100,13 @@ function Upload({
           </p>
         )}
         {extractError && (
-          <p className="callout" role="status">
-            Automatic reading could not fill the fields. Enter them manually.
+          <p
+            className={`callout${factoryRecord ? " invalid-document" : ""}`}
+            role={factoryRecord ? "alert" : "status"}
+          >
+            {factoryRecord
+              ? "The factory document could not be read and verified. Choose a readable PDF and try again."
+              : "Automatic reading could not fill the fields. Enter them manually."}
             {` ${extractError}`}
           </p>
         )}
@@ -1065,23 +1116,22 @@ function Upload({
             entered manually.
           </p>
         )}
-        {inspection && extracted?.content_check === "valid" && (
+        {(inspection || factoryRecord) && extracted?.content_check === "valid" && (
           <p className="callout success-document" role="status">
-            Content check passed: {extracted.content_reason} This checks the
-            document type, not whether its claims are true.
+            {factoryRecord ? "Factory document check passed" : "Content check passed"}: {extracted.content_reason} This checks the document type, not whether its claims are true.
           </p>
         )}
-        {inspection && extracted?.content_check === "not_configured" && (
+        {(inspection || factoryRecord) && extracted?.content_check === "not_configured" && (
           <p className="callout" role="status">
             Gemini content screening is not configured. Only basic OCR document
             type checks are active.
           </p>
         )}
-        {inspection && extracted?.content_check === "unreadable" && (
+        {(inspection || factoryRecord) && extracted?.content_check === "unreadable" && (
           <p className="callout" role="status">
-            The PDF text could not be read, so its content could not be checked.
-            Enter the fields manually and make sure this is the inspection
-            report.
+            The PDF text could not be read, so its document type could not be
+            checked. Missing metadata can be entered manually, but choose a
+            readable PDF so its contents can be verified.
           </p>
         )}
         {extracted?.warnings
@@ -1097,9 +1147,9 @@ function Upload({
               {warning}
             </p>
           ))}
-        {invalidInspectionPdf && (
+        {invalidDocument && (
           <p className="callout invalid-document" role="alert">
-            {invalidInspectionMessage}
+            {validationMessage}
           </p>
         )}
         <label>
@@ -1117,8 +1167,10 @@ function Upload({
             <select
               value={role}
               onChange={(e) => {
-                setRole(e.target.value as Role);
+                const nextRole = e.target.value as Role;
+                setRole(nextRole);
                 setDoc("");
+                if (factoryRecord && file) void readPdf(file, nextRole);
               }}
             >
               {permitted.map(([k, t]) => (
@@ -1219,7 +1271,13 @@ function Upload({
           </button>
           <button
             className="primary"
-            disabled={busy || extracting || !file || invalidInspectionPdf}
+            disabled={
+              busy ||
+              extracting ||
+              !file ||
+              invalidDocument ||
+              (factoryRecord && !!extractError)
+            }
           >
             {busy ? stage : "Upload document"}
           </button>

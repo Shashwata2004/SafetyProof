@@ -18,7 +18,10 @@ from .accounts import account_router
 from .ai import Gemini
 from .config import JOB_FIELDS, settings
 from .document_metadata import extract_metadata
-from .document_validation import check_inspection_content
+from .document_validation import (
+    check_factory_record_content,
+    check_inspection_content,
+)
 from .models import (
     CapReviewInput,
     CaseRecord,
@@ -389,6 +392,19 @@ async def inspect_upload(
     file = form.get("file")
     if file is None or not hasattr(file, "read"):
         raise HTTPException(422, "Choose a PDF to read its fields.")
+    expected_role = str(form.get("role") or "")
+    factory_record_roles = {
+        "cap",
+        "incident",
+        "sop",
+        "drill",
+        "maintenance",
+        "other",
+    }
+    if u.role == "factory_manager" and expected_role not in factory_record_roles:
+        raise HTTPException(
+            422, "Choose the factory record type before checking this PDF."
+        )
     data = await file.read()
     try:
         parsed = await isolated_pdf(
@@ -408,6 +424,17 @@ async def inspect_upload(
                 getattr(file, "filename", "document.pdf") or "document.pdf",
                 case["factory"],
                 case["inspection_on"],
+                request.app.state.ai,
+            )
+        )
+    elif u.role == "factory_manager":
+        fields.update(
+            await check_factory_record_content(
+                parsed["pages"],
+                getattr(file, "filename", "factory-record.pdf") or "factory-record.pdf",
+                case["factory"],
+                case.get("inspection_on"),
+                expected_role,
                 request.app.state.ai,
             )
         )
@@ -486,6 +513,45 @@ async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depen
                         422,
                         "Reviewers can upload inspection reports only for this case.",
                     )
+    elif u.role == "factory_manager":
+        case = await d.one("cases", v["case_id"], token=u.token)
+        if case.get("inspection_on"):
+            document = await d.one(
+                "documents", v["document_id"], token=u.token, fields="role"
+            )
+            if document["role"] == "inspection":
+                raise HTTPException(
+                    403, "Factory managers cannot submit reviewer inspection reports."
+                )
+            data = await d.download(v["object_key"])
+            try:
+                parsed = await isolated_pdf(data, str(vid), cfg.tessdata_prefix, 0, 8)
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            metadata = extract_metadata(
+                parsed["pages"],
+                v.get("filename") or "factory-record.pdf",
+                case["inspection_on"],
+            )
+            content_check = await check_factory_record_content(
+                parsed["pages"],
+                v.get("filename") or "factory-record.pdf",
+                case["factory"],
+                case["inspection_on"],
+                document["role"],
+                request.app.state.ai,
+            )
+            valid_without_ai = (
+                content_check["content_check"] == "not_configured"
+                and metadata["readable_pages"] > 0
+                and metadata["role"] == document["role"]
+            )
+            if content_check["content_check"] != "valid" and not valid_without_ai:
+                raise HTTPException(
+                    422,
+                    content_check["content_reason"]
+                    or "This PDF could not be confirmed as the selected factory record type.",
+                )
     jid = await d.rpc("ingest", cid=v["case_id"], actor_id=u.id, vid=str(vid))
     await schedule_work(request)
     return {"job_id": jid}
