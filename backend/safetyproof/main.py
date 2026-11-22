@@ -426,6 +426,55 @@ async def inspect_upload(
 @app.post("/v1/document-versions/{vid}/finalize", status_code=202)
 async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depends(db)):
     v = await d.one("document_versions", vid, token=u.token)
+    if u.role == "reviewer":
+        case = await d.one("cases", v["case_id"], token=u.token)
+        if case.get("inspection_on"):
+            document = await d.one(
+                "documents", v["document_id"], token=u.token, fields="role"
+            )
+            if document["role"] == "inspection":
+                data = await d.download(v["object_key"])
+                try:
+                    parsed = await isolated_pdf(
+                        data, str(vid), cfg.tessdata_prefix, 0, 8
+                    )
+                except ValueError as exc:
+                    raise HTTPException(422, str(exc)) from exc
+                metadata = extract_metadata(
+                    parsed["pages"],
+                    v.get("filename") or "inspection.pdf",
+                    case["inspection_on"],
+                )
+                if metadata["inspection_date"] != case["inspection_on"]:
+                    raise HTTPException(
+                        422,
+                        "The PDF inspection date must match the date scheduled by the admin.",
+                    )
+                content_check = await check_inspection_content(
+                    parsed["pages"],
+                    v.get("filename") or "inspection.pdf",
+                    case["factory"],
+                    case["inspection_on"],
+                    request.app.state.ai,
+                )
+                if content_check["content_check"] not in (
+                    "valid",
+                    "not_configured",
+                ):
+                    raise HTTPException(
+                        422,
+                        content_check["content_reason"]
+                        or "This PDF could not be confirmed as an inspection report.",
+                    )
+                if (
+                    content_check["content_check"] == "not_configured"
+                    and metadata["readable_pages"] > 0
+                    and metadata["role"] != "inspection"
+                ):
+                    raise HTTPException(
+                        422,
+                        "Reviewers can upload inspection reports only for this case.",
+                    )
     jid = await d.rpc("ingest", cid=v["case_id"], actor_id=u.id, vid=str(vid))
     await schedule_work(request)
     return {"job_id": jid}

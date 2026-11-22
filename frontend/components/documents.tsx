@@ -820,16 +820,31 @@ function Upload({
         body,
       );
       if (result.title) setTitle(result.title);
+      const semanticCheckRan = [
+        "valid",
+        "invalid",
+        "uncertain",
+        "unavailable",
+      ].includes(result.content_check);
+      const validInspectionSource =
+        !inspection ||
+        (semanticCheckRan
+          ? result.content_check === "valid"
+          : result.readable_pages === 0 || result.role === "inspection");
       setIssuedOn(
-        (inspection && result.inspection_date) || result.issued_on || "",
+        validInspectionSource
+          ? (inspection && result.inspection_date) || result.issued_on || ""
+          : "",
       );
       // If the PDF gives a single inspection date but no reporting-period
       // start, use that dated visit as the start. Never invent a period end.
       setPeriodStart(
-        result.period_start ||
-          (inspection ? result.inspection_date || "" : ""),
+        validInspectionSource
+          ? result.period_start ||
+              (inspection ? result.inspection_date || "" : "")
+          : "",
       );
-      setPeriodEnd(result.period_end || "");
+      setPeriodEnd(validInspectionSource ? result.period_end || "" : "");
       if (!scheduled && result.issuer) setIssuer(result.issuer);
       const inferredRole = permitted.some(([key]) => key === result.role)
         ? result.role
