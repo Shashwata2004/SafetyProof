@@ -980,7 +980,7 @@ function Upload({
           </p>
         ))}
         {invalidInspectionPdf && (
-          <p className="callout" role="alert">
+          <p className="callout invalid-document" role="alert">
             {invalidInspectionMessage}
           </p>
         )}
