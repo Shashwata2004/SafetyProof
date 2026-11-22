@@ -788,7 +788,12 @@ function Upload({
       setIssuedOn(
         (inspection && result.inspection_date) || result.issued_on || "",
       );
-      setPeriodStart(result.period_start || "");
+      // If the PDF gives a single inspection date but no reporting-period
+      // start, use that dated visit as the start. Never invent a period end.
+      setPeriodStart(
+        result.period_start ||
+          (inspection ? result.inspection_date || "" : ""),
+      );
       setPeriodEnd(result.period_end || "");
       if (!scheduled && result.issuer) setIssuer(result.issuer);
       const inferredRole = permitted.some(([key]) => key === result.role)
@@ -1013,6 +1018,15 @@ function Upload({
             />
           </label>
         </div>
+        {inspection &&
+          extracted?.inspection_date &&
+          !extracted.period_start && (
+            <p className="hint">
+              The PDF has an inspection date but no separate period start. The
+              inspection date was filled as the start; the end date stays blank
+              unless the PDF states one.
+            </p>
+          )}
         <label className="checkline">
           <input type="checkbox" required />I confirm I have permission to
           upload this document and it belongs to {d.case.factory}.
