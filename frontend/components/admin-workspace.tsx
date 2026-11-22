@@ -264,15 +264,6 @@ export function AdminWorkspace({
                 >
                   {addingFactory ? "Cancel" : "Add factory"}
                 </button>
-                <button
-                  className="primary"
-                  onClick={() => {
-                    setError("");
-                    setAddingCase(true);
-                  }}
-                >
-                  New case
-                </button>
               </div>
             </div>
             {addingFactory && (
@@ -442,8 +433,20 @@ export function AdminWorkspace({
             <div className="section-head">
               <div>
                 <h1>Factory assignments</h1>
-                <p>Choose a factory first, then assign an active reviewer.</p>
+                <p>
+                  Manage factory access and schedule inspections with an active
+                  reviewer.
+                </p>
               </div>
+              <button
+                className="primary"
+                onClick={() => {
+                  setError("");
+                  setAddingCase(true);
+                }}
+              >
+                New case
+              </button>
             </div>
             <div className="panel-pad admin-form">
               {reviewers.isLoading && <Busy />}
