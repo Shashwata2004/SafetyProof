@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .accounts import account_router
 from .ai import Gemini
 from .config import JOB_FIELDS, settings
+from .document_metadata import extract_metadata
 from .models import (
     CapReviewInput,
     CaseRecord,
@@ -28,7 +29,7 @@ from .models import (
     UploadTicket,
 )
 from .platform import Platform, PlatformError
-from .worker import loop
+from .worker import isolated_pdf, loop
 
 cfg = settings()
 bearer = HTTPBearer(auto_error=False)
@@ -141,7 +142,7 @@ async def user(
             request.method == "POST"
             and (
                 path.startswith("/v1/cases/")
-                and path.endswith("/uploads")
+                and path.endswith(("/uploads", "/inspect-upload"))
                 or path.startswith("/v1/document-versions/")
                 and path.endswith("/finalize")
             )
@@ -365,6 +366,32 @@ async def reserve_upload(
         else None
     )
     return {"version_id": version["id"], "upload_url": url, "status": version["status"]}
+
+
+@app.post("/v1/cases/{cid}/inspect-upload")
+async def inspect_upload(
+    cid: UUID, request: Request, u: User = Depends(user), d=Depends(db)
+):
+    case = await d.one("cases", cid, token=u.token)
+    if case["archived"] or case["deleting"]:
+        raise HTTPException(409, "This case is closed to document uploads.")
+    form = await request.form()
+    file = form.get("file")
+    if file is None or not hasattr(file, "read"):
+        raise HTTPException(422, "Choose a PDF to read its fields.")
+    data = await file.read()
+    try:
+        parsed = await isolated_pdf(
+            data, str(uuid4()), cfg.tessdata_prefix, 0, 8
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    fields = extract_metadata(
+        parsed["pages"],
+        getattr(file, "filename", "document.pdf") or "document.pdf",
+        case.get("inspection_on"),
+    )
+    return fields
 
 
 @app.post("/v1/document-versions/{vid}/finalize", status_code=202)

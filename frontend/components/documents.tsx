@@ -718,10 +718,29 @@ function Upload({
   close: () => void;
   done: () => Promise<void>;
 }) {
+  type ExtractedMetadata = {
+    title: string | null;
+    role: Role;
+    issued_on: string | null;
+    inspection_date: string | null;
+    period_start: string | null;
+    period_end: string | null;
+    issuer: string;
+    warnings: string[];
+    pages_checked: number;
+    readable_pages: number;
+  };
   const [err, setErr] = useState(""),
     [busy, setBusy] = useState(false),
     [file, setFile] = useState<File | null>(null),
     [title, setTitle] = useState(""),
+    [issuer, setIssuer] = useState("unknown"),
+    [issuedOn, setIssuedOn] = useState(""),
+    [periodStart, setPeriodStart] = useState(""),
+    [periodEnd, setPeriodEnd] = useState(""),
+    [extracting, setExtracting] = useState(false),
+    [extractError, setExtractError] = useState(""),
+    [extracted, setExtracted] = useState<ExtractedMetadata | null>(null),
     [role, setRole] = useState<Role>(
       d.role === "manager" ? "cap" : "inspection",
     );
@@ -741,6 +760,63 @@ function Upload({
     ? new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10)
     : undefined;
   const bounds = inspection ? { min: `${month}-01`, max: monthEnd } : {};
+  async function readPdf(selected: File | null) {
+    setFile(selected);
+    setExtractError("");
+    setExtracted(null);
+    setIssuedOn("");
+    setPeriodStart("");
+    setPeriodEnd("");
+    setDoc("");
+    setAttempt(crypto.randomUUID());
+    if (!selected) {
+      setTitle("");
+      return;
+    }
+    setTitle(selected.name.replace(/\.pdf$/i, "").replaceAll("-", " "));
+    setExtracting(true);
+    try {
+      const body = new FormData();
+      body.append("file", selected);
+      const result = await api<ExtractedMetadata>(
+        `/v1/cases/${d.case.id}/inspect-upload`,
+        token,
+        "POST",
+        body,
+      );
+      if (result.title) setTitle(result.title);
+      setIssuedOn(
+        (inspection && result.inspection_date) || result.issued_on || "",
+      );
+      setPeriodStart(result.period_start || "");
+      setPeriodEnd(result.period_end || "");
+      if (!scheduled && result.issuer) setIssuer(result.issuer);
+      const inferredRole = permitted.some(([key]) => key === result.role)
+        ? result.role
+        : null;
+      const warnings = [...result.warnings];
+      if (!inferredRole) {
+        warnings.push(
+          `OCR identified this as “${roles[result.role]}”, which is not allowed ` +
+            "for this case. Check the PDF and enter the permitted document " +
+            "details manually.",
+        );
+      }
+      setExtracted({ ...result, warnings });
+      if (inferredRole) setRole(inferredRole);
+      const matched = d.documents.find(
+        (item) =>
+          item.role === (inferredRole || role) &&
+          item.title.trim().toLowerCase() ===
+            (result.title || "").trim().toLowerCase(),
+      );
+      if (matched) setDoc(matched.id);
+    } catch (error) {
+      setExtractError(message(error));
+    } finally {
+      setExtracting(false);
+    }
+  }
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!file) return;
@@ -819,15 +895,32 @@ function Upload({
             type="file"
             accept=".pdf,application/pdf"
             required
-            onChange={(e) => {
-              const f = e.target.files?.[0] || null;
-              setFile(f);
-              setAttempt(crypto.randomUUID());
-              if (f)
-                setTitle(f.name.replace(/\.pdf$/i, "").replaceAll("-", " "));
-            }}
+            onChange={(e) => void readPdf(e.target.files?.[0] || null)}
           />
         </label>
+        {extracting && (
+          <p className="hint" role="status">
+            Reading the first pages and filling in fields from the PDF…
+          </p>
+        )}
+        {extractError && (
+          <p className="callout" role="status">
+            Automatic reading could not fill the fields. Enter them manually.
+            {` ${extractError}`}
+          </p>
+        )}
+        {extracted && !extractError && (
+          <p className="hint" role="status">
+            Read {extracted.readable_pages} of {extracted.pages_checked} pages.
+            Check the extracted fields before uploading; missing fields can be
+            entered manually.
+          </p>
+        )}
+        {extracted?.warnings.map((warning) => (
+          <p className="callout" role="alert" key={warning}>
+            {warning}
+          </p>
+        ))}
         <label>
           Document title
           <input
@@ -857,7 +950,11 @@ function Upload({
           {!scheduled && (
             <label>
               Issuer
-              <select name="issuer">
+              <select
+                name="issuer"
+                value={issuer}
+                onChange={(e) => setIssuer(e.target.value)}
+              >
                 <option value="unknown">Unknown</option>
                 <option value="factory">Factory</option>
                 <option value="external">External reviewer</option>
@@ -884,7 +981,8 @@ function Upload({
             name="issued_on"
             type="date"
             required={inspection}
-            {...bounds}
+            value={issuedOn}
+            onChange={(e) => setIssuedOn(e.target.value)}
           />
         </label>
         {inspection && (
@@ -896,11 +994,23 @@ function Upload({
         <div className="field-pair">
           <label>
             Period starts
-            <input name="period_start" type="date" {...bounds} />
+            <input
+              name="period_start"
+              type="date"
+              value={periodStart}
+              onChange={(e) => setPeriodStart(e.target.value)}
+              {...bounds}
+            />
           </label>
           <label>
             Period ends
-            <input name="period_end" type="date" {...bounds} />
+            <input
+              name="period_end"
+              type="date"
+              value={periodEnd}
+              onChange={(e) => setPeriodEnd(e.target.value)}
+              {...bounds}
+            />
           </label>
         </div>
         <label className="checkline">
@@ -912,7 +1022,7 @@ function Upload({
           <button type="button" disabled={busy} onClick={close}>
             Cancel
           </button>
-          <button className="primary" disabled={busy || !file}>
+          <button className="primary" disabled={busy || extracting || !file}>
             {busy ? stage : "Upload document"}
           </button>
         </div>

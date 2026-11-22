@@ -183,14 +183,15 @@ export async function api<T>(
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<T> {
+  const multipart = typeof FormData !== "undefined" && body instanceof FormData;
   const resp = await fetch(apiBase() + path, {
     method,
     signal,
     headers: {
       ...(token ? { Authorization: "Bearer " + token } : {}),
-      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(body && !multipart ? { "Content-Type": "application/json" } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? (multipart ? body : JSON.stringify(body)) : undefined,
     cache: "no-store",
   });
   if (!resp.ok) {
