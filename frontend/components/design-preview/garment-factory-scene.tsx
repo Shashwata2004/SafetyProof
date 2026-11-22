@@ -48,9 +48,9 @@ function CameraRig({ selectedZone, resetSignal, reducedMotion }: Pick<SceneProps
     moving.current = true;
   }, [resetSignal]);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!moving.current || !controls.current) return;
-    const alpha = reducedMotion ? 1 : 0.075;
+    const alpha = reducedMotion ? 1 : 1 - Math.exp(-delta * 5.2);
     camera.position.lerp(destination.current, alpha);
     controls.current.target.lerp(target.current, alpha);
     controls.current.update();
@@ -72,7 +72,44 @@ function CameraRig({ selectedZone, resetSignal, reducedMotion }: Pick<SceneProps
       maxPolarAngle={1.28}
       minAzimuthAngle={-1.25}
       maxAzimuthAngle={1.25}
+      onStart={() => {
+        moving.current = false;
+      }}
     />
+  );
+}
+
+const zoneFootprints: Record<ZoneId, [number, number]> = {
+  storage: [3.1, 2.75],
+  cutting: [3.65, 2.6],
+  sewing: [5.45, 3.45],
+  finishing: [3.05, 2.55],
+  quality: [3.05, 2.55],
+  packing: [3.45, 2.5],
+};
+
+function ZoneBoundary({ zone, active }: { zone: (typeof factoryZones)[number]; active: boolean }) {
+  const [width, depth] = zoneFootprints[zone.id];
+  const opacity = active ? 0.58 : 0.18;
+  return (
+    <group position={[0, -0.37, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[width, depth]} />
+        <meshBasicMaterial color={zone.accent} transparent opacity={active ? 0.075 : 0.022} depthWrite={false} />
+      </mesh>
+      {[-depth / 2, depth / 2].map((z) => (
+        <mesh key={`z-${z}`} position={[0, 0.012, z]}>
+          <boxGeometry args={[width, 0.022, 0.035]} />
+          <meshBasicMaterial color={zone.accent} transparent opacity={opacity} />
+        </mesh>
+      ))}
+      {[-width / 2, width / 2].map((x) => (
+        <mesh key={`x-${x}`} position={[x, 0.012, 0]}>
+          <boxGeometry args={[0.035, 0.022, depth]} />
+          <meshBasicMaterial color={zone.accent} transparent opacity={opacity} />
+        </mesh>
+      ))}
+    </group>
   );
 }
 
@@ -90,6 +127,7 @@ function ZoneHotspot({ zone, selected, hovered, onSelect, onHover }: {
   };
   return (
     <group position={zone.position}>
+      <ZoneBoundary zone={zone} active={selected || hovered} />
       <mesh
         position={[0, 0.72, 0]}
         onClick={handleClick}
@@ -103,7 +141,11 @@ function ZoneHotspot({ zone, selected, hovered, onSelect, onHover }: {
         <ringGeometry args={[0.48, 0.56, 32]} />
         <meshBasicMaterial color={zone.accent} transparent opacity={selected ? 0.95 : 0.34} side={THREE.DoubleSide} />
       </mesh>
-      <Html center position={[0, 2.15, 0]} distanceFactor={10} zIndexRange={[30, 0]}>
+      <mesh position={[0, 0.55, 0]}>
+        <cylinderGeometry args={[0.018, 0.018, 1.05, 8]} />
+        <meshBasicMaterial color={zone.accent} transparent opacity={selected || hovered ? 0.6 : 0.2} />
+      </mesh>
+      <Html center position={[0, 2.32, 0]} distanceFactor={10} zIndexRange={[30, 0]}>
         <button
           type="button"
           onClick={() => onSelect(zone.id)}
@@ -114,7 +156,10 @@ function ZoneHotspot({ zone, selected, hovered, onSelect, onHover }: {
           aria-label={`Focus 3D view on ${zone.label}`}
         >
           <span />
-          {zone.shortLabel}
+          <span className={styles.markerCopy}>
+            {zone.shortLabel}
+            {(selected || hovered) && <small>{zone.evidence} demo evidence items</small>}
+          </span>
         </button>
       </Html>
     </group>
@@ -125,10 +170,19 @@ function FactoryWorld(props: SceneProps & { reducedMotion: boolean }) {
   return (
     <>
       <color attach="background" args={["#071321"]} />
-      <fog attach="fog" args={["#071321", 18, 30]} />
-      <ambientLight intensity={0.7} color="#8db7c8" />
-      <hemisphereLight args={["#baf7ff", "#06101c", 1.35]} />
-      <directionalLight position={[6, 11, 8]} intensity={2.6} color="#dcfaff" castShadow shadow-mapSize={[1024, 1024]} />
+      <fog attach="fog" args={["#071321", 17, 31]} />
+      <ambientLight intensity={0.38} color="#7aa9bd" />
+      <hemisphereLight args={["#baf7ff", "#030912", 1.05]} />
+      <directionalLight
+        position={[7, 11, 8]}
+        intensity={2.35}
+        color="#dcfaff"
+        castShadow
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.0002}
+      />
+      <spotLight position={[-6, 7, 4]} target-position={[-3, 0, 0]} color="#22d3ee" intensity={22} angle={0.48} penumbra={0.8} distance={17} />
+      <spotLight position={[7, 6, 2]} target-position={[4, 0, 0]} color="#a78bfa" intensity={15} angle={0.5} penumbra={0.85} distance={15} />
       <FactoryShell />
       <FabricStorageZone />
       <CuttingZone />
@@ -169,6 +223,11 @@ export default function GarmentFactoryScene(props: SceneProps) {
       camera={{ position: overviewCamera.toArray(), fov: 42, near: 0.1, far: 60 }}
       gl={{ antialias: true, powerPreference: "high-performance", alpha: false }}
       onPointerMissed={() => props.onHover(null)}
+      onCreated={({ gl }) => {
+        gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.toneMappingExposure = 1.08;
+        gl.outputColorSpace = THREE.SRGBColorSpace;
+      }}
     >
       <FactoryWorld {...props} reducedMotion={reducedMotion} />
     </Canvas>

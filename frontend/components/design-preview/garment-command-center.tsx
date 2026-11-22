@@ -77,6 +77,23 @@ export function GarmentCommandCenter() {
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const handleKeyboard = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      const zoneIndex = Number(event.key) - 1;
+      if (Number.isInteger(zoneIndex) && factoryZones[zoneIndex]) {
+        setSelectedZone(factoryZones[zoneIndex].id);
+        return;
+      }
+      if (event.key === "Escape" || event.key.toLowerCase() === "r") {
+        setResetSignal((value) => value + 1);
+      }
+    };
+    window.addEventListener("keydown", handleKeyboard);
+    return () => window.removeEventListener("keydown", handleKeyboard);
+  }, []);
+
   const activeZone = useMemo(
     () => factoryZones.find((zone) => zone.id === selectedZone) ?? factoryZones[0],
     [selectedZone],
@@ -156,7 +173,7 @@ export function GarmentCommandCenter() {
                 <h2 id="scene-title">Factory floor</h2>
               </div>
               <div className={styles.sceneActions}>
-                <span className={styles.activeZone}><MapPin aria-hidden="true" /> {activeZone.label}</span>
+                <span className={styles.activeZone} aria-live="polite"><MapPin aria-hidden="true" /> {activeZone.label}</span>
                 <button type="button" onClick={() => setResetSignal((value) => value + 1)} title="Reset 3D camera"><Focus aria-hidden="true" /> Reset view</button>
               </div>
             </div>
@@ -170,7 +187,7 @@ export function GarmentCommandCenter() {
                   onHover={setHoveredZone}
                 />
               </PreviewErrorBoundary>
-              <div className={styles.sceneHint}><RefreshCcw aria-hidden="true" /> Drag to orbit · scroll to zoom · select a zone</div>
+              <div className={styles.sceneHint}><RefreshCcw aria-hidden="true" /> Drag to orbit · scroll to zoom · keys 1–6 focus zones · R resets</div>
               <div className={styles.sceneDemoBadge}>GENERATED 3D · DEMO LAYOUT</div>
             </div>
             <div className={styles.zoneSelector} role="group" aria-label="Select a factory zone">
@@ -184,6 +201,8 @@ export function GarmentCommandCenter() {
                   className={selectedZone === zone.id ? styles.zoneActive : ""}
                   style={{ "--zone-color": zone.accent } as React.CSSProperties}
                   aria-pressed={selectedZone === zone.id}
+                  aria-label={`Focus ${zone.label} in the 3D factory`}
+                  title={`${zone.label} · keyboard ${factoryZones.indexOf(zone) + 1}`}
                 >
                   <span />{zone.shortLabel}
                 </button>
