@@ -103,11 +103,13 @@ export function Modal({
   close,
   children,
   wide = false,
+  className = "",
 }: {
   title: string;
   close: () => void;
   children: React.ReactNode;
   wide?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const headingId = useId();
@@ -127,7 +129,7 @@ export function Modal({
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
-      className={wide ? "modal wide" : "modal"}
+      className={["modal", wide && "wide", className].filter(Boolean).join(" ")}
     >
       <div className="modal-inner">
         <header>

@@ -567,6 +567,45 @@ function clusterPagesByHeader(pages: PageInfo[]) {
   return [...clusters.values()];
 }
 
+function renderDocumentText(text: string, header: string) {
+  const markers = /(\b(?:FI|CA|EX|E)-?\d{1,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b(?:critical|high|immediate|overdue|missing|contradiction|unsupported|obstructed|injur\w*|fire|open|closed|in progress|completed|failed|blocked)\b)/gi;
+  const sectionHeading = /^(?:visit details|inspection scope|scope and basis|review conditions|reading this report|inspection findings|findings|corrective actions?|evidence|incident details|summary|recommendations|follow-up|fire safety|electrical safety|building details|worker interviews|records reviewed)$/i;
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const isHeader = line.replace(/\s+/g, " ").toLocaleLowerCase() === header.toLocaleLowerCase();
+      const isHeading = sectionHeading.test(line);
+      const labelMatch = line.match(/^([^:]{2,42}:)(.*)$/);
+      const parts = (labelMatch ? labelMatch[2] : line).split(markers);
+      return (
+        <div
+          className={`document-text-line${isHeader ? " document-text-header" : ""}${isHeading ? " document-text-heading" : ""}`}
+          key={`${index}-${line.slice(0, 24)}`}
+        >
+          {labelMatch && <span className="document-text-label">{labelMatch[1]}</span>}
+          {parts.map((part, partIndex) => {
+            if (!part) return null;
+            if (/^\d{4}-\d{2}-\d{2}$/.test(part)) {
+              return <span className="document-token-date" key={partIndex}>{part}</span>;
+            }
+            if (/^(?:FI|CA|EX|E)-?\d{1,4}$/i.test(part)) {
+              return <span className="document-token-reference" key={partIndex}>{part}</span>;
+            }
+            if (/^(?:critical|high|immediate|overdue|missing|contradiction|unsupported|obstructed|injur\w*|fire|failed|blocked)$/i.test(part)) {
+              return <span className="document-token-alert" key={partIndex}>{part}</span>;
+            }
+            if (/^(?:open|closed|in progress|completed)$/i.test(part)) {
+              return <span className="document-token-status" key={partIndex}>{part}</span>;
+            }
+            return part;
+          })}
+        </div>
+      );
+    });
+}
+
 function Inspect({
   version: v,
   title,
@@ -586,7 +625,7 @@ function Inspect({
   });
   const clusters = clusterPagesByHeader(q.data ?? []);
   return (
-    <Modal title={title} close={close}>
+    <Modal title={title} close={close} className="inspection-text-modal">
       <div className="inline-actions">
         <Tag>Revision {v.revision}</Tag>
         <button
@@ -597,6 +636,12 @@ function Inspect({
         >
           Open original PDF <ChevronRight size={14} />
         </button>
+      </div>
+      <div className="document-text-legend" aria-label="Text highlight key">
+        <span className="document-token-date">Dates</span>
+        <span className="document-token-reference">Finding / CAP IDs</span>
+        <span className="document-token-alert">Important risk</span>
+        <span className="document-token-status">Status</span>
       </div>
       {q.isLoading ? (
         <Busy />
@@ -619,7 +664,9 @@ function Inspect({
                   <h3>
                     Page {page.page_no} · {page.method === "ocr" ? "OCR" : "Digital text"} · {page.quality}
                   </h3>
-                  <pre>{page.text || "No readable text."}</pre>
+                  <div className="document-text-content">
+                    {page.text ? renderDocumentText(page.text, cluster.header) : "No readable text."}
+                  </div>
                 </section>
               ))}
             </div>
