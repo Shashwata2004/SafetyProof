@@ -1150,6 +1150,10 @@ input[type="checkbox"] {
   background: #eee9ff;
   color: #5c48a4;
 }
+.document-finding-key {
+  background: #fde7e7;
+  color: #a1232d;
+}
 .document-text-content {
   color: #283a33;
   font-size: 15px;
@@ -1160,15 +1164,14 @@ input[type="checkbox"] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.document-text-line.document-text-header {
-  margin: 0 0 10px;
-  padding: 9px 12px;
-  border-left: 4px solid #08735a;
+.document-text-line.document-text-finding {
+  margin: 6px 0;
+  padding: 8px 11px;
+  border-left: 4px solid #c4363d;
   border-radius: 0 7px 7px 0;
-  background: #edf7f1;
-  color: #174d3b;
-  font-size: 16px;
-  font-weight: 800;
+  background: #fff0ef;
+  color: #642a2c;
+  font-weight: 700;
 }
 .document-text-line.document-text-heading {
   margin-top: 12px;

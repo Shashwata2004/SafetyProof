@@ -567,7 +567,7 @@ function clusterPagesByHeader(pages: PageInfo[]) {
   return [...clusters.values()];
 }
 
-function renderDocumentText(text: string, header: string) {
+function renderDocumentText(text: string) {
   const markers = /(\b(?:FI|CA|EX|E)-?\d{1,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b(?:critical|high|immediate|overdue|missing|contradiction|unsupported|obstructed|injur\w*|fire|open|closed|in progress|completed|failed|blocked)\b)/gi;
   const sectionHeading = /^(?:visit details|inspection scope|scope and basis|review conditions|reading this report|inspection findings|findings|corrective actions?|evidence|incident details|summary|recommendations|follow-up|fire safety|electrical safety|building details|worker interviews|records reviewed)$/i;
   return text
@@ -575,13 +575,13 @@ function renderDocumentText(text: string, header: string) {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line, index) => {
-      const isHeader = line.replace(/\s+/g, " ").toLocaleLowerCase() === header.toLocaleLowerCase();
       const isHeading = sectionHeading.test(line);
+      const isFinding = /^\s*(?:(?:finding|observation)\s*(?:id\s*)?(?:FI[-\s]*)?\d+\b|FI[-\s]*\d+\b)/i.test(line);
       const labelMatch = line.match(/^([^:]{2,42}:)(.*)$/);
       const parts = (labelMatch ? labelMatch[2] : line).split(markers);
       return (
         <div
-          className={`document-text-line${isHeader ? " document-text-header" : ""}${isHeading ? " document-text-heading" : ""}`}
+          className={`document-text-line${isFinding ? " document-text-finding" : ""}${isHeading ? " document-text-heading" : ""}`}
           key={`${index}-${line.slice(0, 24)}`}
         >
           {labelMatch && <span className="document-text-label">{labelMatch[1]}</span>}
@@ -638,6 +638,7 @@ function Inspect({
         </button>
       </div>
       <div className="document-text-legend" aria-label="Text highlight key">
+        <span className="document-finding-key">Finding</span>
         <span className="document-token-date">Dates</span>
         <span className="document-token-reference">Finding / CAP IDs</span>
         <span className="document-token-alert">Important risk</span>
@@ -665,7 +666,7 @@ function Inspect({
                     Page {page.page_no} · {page.method === "ocr" ? "OCR" : "Digital text"} · {page.quality}
                   </h3>
                   <div className="document-text-content">
-                    {page.text ? renderDocumentText(page.text, cluster.header) : "No readable text."}
+                    {page.text ? renderDocumentText(page.text) : "No readable text."}
                   </div>
                 </section>
               ))}
