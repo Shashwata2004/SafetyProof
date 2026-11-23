@@ -1445,10 +1445,44 @@ input[type="checkbox"] {
     margin-top: 10px;
     border-top: 1px solid #aaa;
   }
+  .print-sheet .print-result {
+    break-inside: auto;
+    padding: 10px 0 14px;
+  }
+  .print-sheet .print-result h2 {
+    margin-bottom: 4px;
+    color: #174c3c;
+  }
+  .print-sheet .print-result h3 {
+    margin: 10px 0 4px;
+    font-size: 11pt;
+  }
+  .print-sheet .print-explanation {
+    border-left: 4px solid #397b5f;
+    padding: 8px 10px;
+    background: #edf6ef;
+  }
+  .print-sheet .print-explanation.print-red {
+    border-color: #b8323c;
+    background: #fff0f0;
+  }
+  .print-sheet .print-explanation.print-amber {
+    border-color: #b56b12;
+    background: #fff6e4;
+  }
+  .print-sheet .print-explanation.print-neutral {
+    border-color: #426b91;
+    background: #eef4fa;
+  }
   .print-sheet blockquote {
     border-left: 2px solid #aaa;
     padding: 5px 10px;
     white-space: pre-wrap;
+  }
+  .print-sheet blockquote small {
+    display: block;
+    margin-top: 4px;
+    color: #555;
   }
 }
 

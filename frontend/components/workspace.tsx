@@ -45,7 +45,14 @@ import type { components } from "@/lib/schema";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 const qc = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+    },
+  },
 });
 export function Workspace({ basePath = "/workspace" }: { basePath?: string }) {
   return (

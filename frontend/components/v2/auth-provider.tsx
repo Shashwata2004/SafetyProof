@@ -1,7 +1,7 @@
 "use client";
 
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { components } from "@/lib/schema";
 import { api, type Config, message } from "@/lib/api";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -27,6 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [error, setError] = useState("");
+  const sessionUserId = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -40,13 +41,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data, error: sessionError } = await auth.auth.getSession();
         if (sessionError) throw sessionError;
         if (!active) return;
+        sessionUserId.current = data.session?.user.id || null;
         setSessionState(data.session);
         setState(data.session ? "loading" : "signed-out");
         const subscription = auth.auth.onAuthStateChange((_event, nextSession) => {
           if (!active) return;
+          const nextUserId = nextSession?.user.id || null;
+          const userChanged = sessionUserId.current !== nextUserId;
+          sessionUserId.current = nextUserId;
           setSessionState(nextSession);
-          setProfile(null);
-          setState(nextSession ? "loading" : "signed-out");
+          if (!nextSession) {
+            setProfile(null);
+            setState("signed-out");
+          } else if (userChanged) {
+            setProfile(null);
+            setState("loading");
+          } else {
+            // A token refresh for the same account should not unmount the app shell.
+            setState((current) => current === "authenticated" ? current : "loading");
+          }
         });
         unsubscribe = () => subscription.data.subscription.unsubscribe();
       })

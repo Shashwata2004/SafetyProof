@@ -56,6 +56,23 @@ const decisions: Record<Action, string> = {
   comment: "Add comment",
 };
 
+function plainResult(outcome: Outcome) {
+  switch (outcome) {
+    case "supported":
+      return "The cited document contains information that supports this statement. Read the quote below to see what it says.";
+    case "contradicted":
+      return "The cited records give different facts about the same subject and time period.";
+    case "unresolved":
+      return "The inspection report records this problem. The selected records do not show a later independent inspection confirming that it was fixed.";
+    case "unsupported":
+      return "The selected records do not contain enough information to confirm this statement.";
+    case "needs_review":
+      return "The documents are unclear or do not agree. A reviewer should compare the quoted pages before deciding.";
+    case "not_assessed":
+      return "This check is incomplete. The available pages or search were not enough to reach a result.";
+  }
+}
+
 function revealAssessment(id: string) {
   const detail = document.getElementById(`assessment-detail-${id}`);
   detail?.focus({ preventScroll: true });
@@ -485,23 +502,42 @@ function PrintSheet({
         {run.config.pipeline} · {run.config.llm} · {run.config.embedding}
       </p>
       {rows.map((r) => (
-        <section key={r.id}>
+        <section className="print-result" key={r.id}>
           <h2>{outcomes[r.outcome]}</h2>
-          <p>{r.reason}</p>
-          {[r.claim.source, ...r.evidence].map((q, i) => (
-            <blockquote key={i} dir="auto">
-              {q.quote}
-              <small>
-                {q.document} · revision {q.revision} · page {q.page}
-              </small>
-            </blockquote>
-          ))}
+          <p className={`print-explanation print-${tone[r.outcome]}`}>
+            {plainResult(r.outcome)}
+          </p>
+          <h3>Statement checked</h3>
+          <blockquote dir="auto">
+            {r.claim.source.quote}
+            <small>
+              {r.claim.source.document} · revision {r.claim.source.revision} ·
+              page {r.claim.source.page}
+            </small>
+          </blockquote>
+          {r.evidence.length > 0 ? (
+            <>
+              <h3>Evidence found</h3>
+              {r.evidence.map((q, i) => (
+                <blockquote key={i} dir="auto">
+                  {q.quote}
+                  <small>
+                    {q.document} · revision {q.revision} · page {q.page}
+                  </small>
+                </blockquote>
+              ))}
+            </>
+          ) : (
+            <p>No source passage was cited for this result.</p>
+          )}
           <p>
-            Search coverage ·{" "}
+            Search checked: {" "}
             {r.coverage.full_search
-              ? "complete secondary search"
-              : "selected passages"}{" "}
-            · {r.coverage.unreadable_pages} uncertain pages
+              ? "all readable pages in the selected records"
+              : "the most relevant passages"}
+            {r.coverage.unreadable_pages > 0
+              ? `; ${r.coverage.unreadable_pages} pages could not be read`
+              : ""}.
           </p>
           {r.reviews.map((e) => (
             <p key={e.id}>

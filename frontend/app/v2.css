@@ -59,7 +59,7 @@ button, input, select, textarea { font: inherit; }
 :root[data-theme="light"] .industrial-vignette { background: linear-gradient(90deg, rgba(18,30,34,.2) 0%, rgba(20,35,39,.1) 38%, rgba(18,30,34,.62) 70%, rgba(18,30,34,.9) 100%), linear-gradient(0deg, rgba(18,30,34,.66) 0%, transparent 48%, rgba(18,30,34,.2) 100%); }
 .public-header { min-height: 92px; display: flex; align-items: center; justify-content: space-between; gap: 28px; position: relative; z-index: 3; }
 .public-brand { color: var(--sp-text); display: inline-flex; align-items: center; gap: 11px; text-decoration: none; }
-.public-brand > span { width: 43px; height: 43px; border-radius: 13px; background: linear-gradient(145deg, #e99a48, #b76826); color: white; display: grid; place-items: center; box-shadow: 0 10px 28px rgba(207,119,43,.28); }
+.public-brand > span { width: 43px; height: 43px; border-radius: 13px; background: #daf4a8; color: #224434; display: grid; place-items: center; box-shadow: 0 10px 28px rgba(112, 175, 86, .24); }
 .public-brand svg { width: 23px; }
 .public-brand strong { font-size: 1.05rem; letter-spacing: -.03em; }
 .public-brand em { color: #7fd4d5; font-style: normal; }
@@ -231,7 +231,7 @@ button, input, select, textarea { font: inherit; }
 .analytics-shell.sidebar-collapsed { grid-template-columns: 82px minmax(0, 1fr); }
 .analytics-sidebar { position: sticky; top: 0; z-index: 50; height: 100svh; padding: 20px 14px; background: var(--sp-sidebar); color: #eef3fb; display: flex; flex-direction: column; overflow: hidden; }
 .sidebar-brand { min-height: 54px; padding: 0 8px; display: flex; align-items: center; gap: 11px; white-space: nowrap; }
-.sidebar-brand > span { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 13px; background: linear-gradient(145deg, #e99a48, #a95823); display: grid; place-items: center; }
+.sidebar-brand > span { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 13px; background: #daf4a8; color: #224434; display: grid; place-items: center; }
 .sidebar-brand svg { width: 22px; }
 .sidebar-brand strong { letter-spacing: -.03em; }
 .sidebar-brand em { color: #7fd4d5; font-style: normal; }
