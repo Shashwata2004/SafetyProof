@@ -16,6 +16,7 @@ import {
 import {
   api,
   dateText,
+  Doc,
   Dossier,
   Job,
   PageInfo,
@@ -64,7 +65,8 @@ export function Documents({
     d.role === "reviewer" && !d.case.archived && !d.case.deleting;
   const [upload, setUpload] = useState(false),
     [inspect, setInspect] = useState<Version | null>(null),
-    [remove, setRemove] = useState(false);
+    [remove, setRemove] = useState(false),
+    [removeDocument, setRemoveDocument] = useState<Doc | null>(null);
   const [err, setErr] = useState(""),
     [busy, setBusy] = useState(false),
     [selected, setSelected] = useState<string[]>(() => latest(d.versions)),
@@ -246,6 +248,16 @@ export function Documents({
                       )}
                     </div>
                     {v.error && <small className="error-text">{v.error}</small>}
+                    {v.cap_deadline_warning && (
+                      <p className="deadline-warning" role="alert">
+                        CAP deadline flag: {v.cap_deadline_warning}
+                      </p>
+                    )}
+                    {v.duplicate_warning && (
+                      <p className="callout duplicate-warning" role="status">
+                        Possible duplicate: {v.duplicate_warning}
+                      </p>
+                    )}
                   </div>
                   {processed(v) && (
                     <button
@@ -256,6 +268,26 @@ export function Documents({
                       <FileSearch size={18} />
                     </button>
                   )}
+                  {d.role === "manager" &&
+                    v.revision ===
+                      Math.max(
+                        ...d.versions
+                          .filter((item) => item.document_id === doc.id)
+                          .map((item) => item.revision),
+                      ) && (
+                      <button
+                        className="icon-button danger-icon"
+                        aria-label={`Delete ${doc.title}`}
+                        title="Delete document"
+                        disabled={busy}
+                        onClick={() => {
+                          setErr("");
+                          setRemoveDocument(doc);
+                        }}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
                 </div>
               );
             })
@@ -493,6 +525,48 @@ export function Documents({
           </div>
         </Modal>
       )}
+      {removeDocument && (
+        <Modal
+          title="Delete this document?"
+          close={() => {
+            if (!busy) setRemoveDocument(null);
+          }}
+        >
+          <p>
+            <b>{removeDocument.title}</b> and all its revisions will be removed
+            from this case. Previous verification history will remain available.
+          </p>
+          {err && <ErrorNote text={err} />}
+          <div className="form-actions">
+            <button disabled={busy} onClick={() => setRemoveDocument(null)}>
+              Keep document
+            </button>
+            <button
+              className="danger"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setErr("");
+                try {
+                  await api(
+                    `/v1/cases/${d.case.id}/documents/${removeDocument.id}`,
+                    token,
+                    "DELETE",
+                  );
+                  setRemoveDocument(null);
+                  await refresh();
+                } catch (error) {
+                  setErr(message(error));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Delete document
+            </button>
+          </div>
+        </Modal>
+      )}
       {upload && (
         <Upload
           dossier={d}
@@ -637,6 +711,16 @@ function Inspect({
           Open original PDF <ChevronRight size={14} />
         </button>
       </div>
+      {v.cap_deadline_warning && (
+        <p className="deadline-warning" role="alert">
+          CAP deadline flag: {v.cap_deadline_warning}
+        </p>
+      )}
+      {v.duplicate_warning && (
+        <p className="callout duplicate-warning" role="status">
+          Possible duplicate: {v.duplicate_warning}
+        </p>
+      )}
       <div className="document-text-legend" aria-label="Text highlight key">
         <span className="document-finding-key">Finding</span>
         <span className="document-token-date">Dates</span>
@@ -691,6 +775,9 @@ export function FactoryDocuments({
 }) {
   const [upload, setUpload] = useState(false);
   const [inspect, setInspect] = useState<{ version: Version; title: string } | null>(null);
+  const [removeDocument, setRemoveDocument] = useState<Doc | null>(null);
+  const [removeError, setRemoveError] = useState("");
+  const [removing, setRemoving] = useState(false);
   const reports = d.versions.filter((version) =>
     d.documents.some(
       (doc) => doc.id === version.document_id && doc.role === "inspection",
@@ -735,16 +822,45 @@ export function FactoryDocuments({
               {version.error && (
                 <small className="error-text">{version.error}</small>
               )}
+              {version.cap_deadline_warning && (
+                <p className="deadline-warning" role="alert">
+                  CAP deadline flag: {version.cap_deadline_warning}
+                </p>
+              )}
+              {version.duplicate_warning && (
+                <p className="callout duplicate-warning" role="status">
+                  Possible duplicate: {version.duplicate_warning}
+                </p>
+              )}
             </div>
-            {processed(version) ? (
-              <button
-                onClick={() => setInspect({ version, title: doc.title })}
-              >
-                Open report
-              </button>
-            ) : (
-              <Tag>{version.status.replaceAll("_", " ")}</Tag>
-            )}
+            <div className="document-row-actions">
+              {processed(version) ? (
+                <button
+                  onClick={() => setInspect({ version, title: doc.title })}
+                >
+                  Open report
+                </button>
+              ) : (
+                <Tag>{version.status.replaceAll("_", " ")}</Tag>
+              )}
+              {d.role === "manager" &&
+                version.revision ===
+                  Math.max(
+                    ...d.versions
+                      .filter((item) => item.document_id === doc.id)
+                      .map((item) => item.revision),
+                  ) && (
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      setRemoveError("");
+                      setRemoveDocument(doc);
+                    }}
+                  >
+                    <Trash2 size={15} /> Delete
+                  </button>
+                )}
+            </div>
           </div>
         );
       })}
@@ -767,6 +883,48 @@ export function FactoryDocuments({
           close={() => setInspect(null)}
           preview={preview}
         />
+      )}
+      {removeDocument && (
+        <Modal
+          title="Delete this document?"
+          close={() => {
+            if (!removing) setRemoveDocument(null);
+          }}
+        >
+          <p>
+            <b>{removeDocument.title}</b> and all its revisions will be removed
+            from this case. Previous verification history will remain available.
+          </p>
+          {removeError && <ErrorNote text={removeError} />}
+          <div className="form-actions">
+            <button disabled={removing} onClick={() => setRemoveDocument(null)}>
+              Keep document
+            </button>
+            <button
+              className="danger"
+              disabled={removing}
+              onClick={async () => {
+                setRemoving(true);
+                setRemoveError("");
+                try {
+                  await api(
+                    `/v1/cases/${d.case.id}/documents/${removeDocument.id}`,
+                    token,
+                    "DELETE",
+                  );
+                  setRemoveDocument(null);
+                  await refresh();
+                } catch (error) {
+                  setRemoveError(message(error));
+                } finally {
+                  setRemoving(false);
+                }
+              }}
+            >
+              Delete document
+            </button>
+          </div>
+        </Modal>
       )}
     </section>
   );
@@ -805,7 +963,13 @@ function Upload({
     content_reason: string | null;
     content_indicators: string[];
     content_model: string | null;
+    cap_submission_deadline: string | null;
+    cap_deadline_warning: string | null;
+    content_fingerprint: string | null;
+    duplicate_of: string | null;
+    duplicate_warning: string | null;
   };
+  const existingCap = d.documents.find((item) => item.role === "cap");
   const [err, setErr] = useState(""),
     [busy, setBusy] = useState(false),
     [file, setFile] = useState<File | null>(null),
@@ -817,15 +981,15 @@ function Upload({
     [extracting, setExtracting] = useState(false),
     [extractError, setExtractError] = useState(""),
     [extracted, setExtracted] = useState<ExtractedMetadata | null>(null),
-    [role, setRole] = useState<Role>(
-      d.role === "manager" ? "cap" : "inspection",
-    );
+    [role, setRole] = useState<Role | "">("");
   const [doc, setDoc] = useState(""),
     [stage, setStage] = useState(""),
     [attempt, setAttempt] = useState(() => crypto.randomUUID());
   const scheduled = !!d.case.inspection_on;
   const inspection = scheduled && d.role === "reviewer";
   const factoryRecord = scheduled && d.role === "manager";
+  const duplicateCap =
+    factoryRecord && role === "cap" && !!existingCap && !!file;
   const semanticCheckRan =
     !!extracted &&
     ["valid", "invalid", "uncertain", "unavailable"].includes(
@@ -854,7 +1018,16 @@ function Upload({
       extracted.readable_pages > 0 &&
       extracted.role === role
     );
-  const invalidDocument = invalidInspectionPdf || invalidFactoryRecord;
+  const exactDuplicate = !!extracted?.duplicate_of;
+  const invalidDocument =
+    duplicateCap || exactDuplicate || invalidInspectionPdf || invalidFactoryRecord;
+  const capDeadlineWarning =
+    factoryRecord &&
+    role === "cap" &&
+    extracted?.cap_submission_deadline &&
+    issuedOn > extracted.cap_submission_deadline
+      ? `CAP issue date (${issuedOn}) is after the inspection report's submission deadline (${extracted.cap_submission_deadline}). Reviewer review is required.`
+      : null;
   const semanticFailureMessage =
     extracted?.content_check === "unavailable"
       ? "Gemini could not complete the content check. Check the server configuration and retry."
@@ -876,17 +1049,23 @@ function Upload({
     extracted?.content_check === "invalid"
       ? `Invalid document: ${extracted.content_reason || "the PDF does not contain the selected factory record type."} Choose the correct record type or a different PDF.`
       : extracted?.content_check === "uncertain"
-        ? `The selected factory record type could not be confirmed: ${extracted.content_reason || "the PDF text is too ambiguous or incomplete."} Choose a clearer PDF.`
+        ? !role
+          ? "The document type is unclear from the full PDF. Choose the record type manually; the complete PDF will then be checked against it."
+          : `The selected factory record type could not be confirmed: ${extracted.content_reason || "the PDF text is too ambiguous or incomplete."} Choose a clearer PDF.`
         : extracted?.content_check === "unavailable"
           ? extracted.content_reason || "Gemini could not check this factory document. Retry when the service is available."
           : extracted?.content_check === "unreadable"
             ? "Invalid document: no readable text was found, so its factory record type cannot be checked. Choose a readable PDF."
             : extracted?.content_check === "not_configured" && extracted.role !== role
-              ? `OCR identified this as “${roles[extracted.role]}”, not “${roles[role]}”. Choose the matching document role or a different PDF.`
+            ? `OCR identified this as “${roles[extracted.role]}”, not “${role ? roles[role] : "a selected role"}”. Choose the matching document role or a different PDF.`
               : extracted?.content_reason || "This PDF could not be checked as a factory record.";
-  const validationMessage = factoryRecord
-    ? invalidFactoryRecordMessage
-    : invalidInspectionMessage;
+  const validationMessage = duplicateCap
+    ? "This case already has a CAP. A second CAP cannot be uploaded."
+    : exactDuplicate
+      ? "This PDF has the same readable document text as an existing upload in this case. Upload blocked as a duplicate."
+    : factoryRecord
+      ? invalidFactoryRecordMessage
+      : invalidInspectionMessage;
   const permitted = Object.entries(roles).filter(
     ([key]) =>
       !scheduled ||
@@ -898,7 +1077,7 @@ function Upload({
     ? new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10)
     : undefined;
   const bounds = inspection ? { min: `${month}-01`, max: monthEnd } : {};
-  async function readPdf(selected: File | null, expectedRole: Role = role) {
+  async function readPdf(selected: File | null, expectedRole: Role | "" = role) {
     setFile(selected);
     setExtractError("");
     setExtracted(null);
@@ -916,7 +1095,7 @@ function Upload({
     try {
       const body = new FormData();
       body.append("file", selected);
-      if (factoryRecord) body.append("role", expectedRole);
+      if (factoryRecord && expectedRole) body.append("role", expectedRole);
       const result = await api<ExtractedMetadata>(
         `/v1/cases/${d.case.id}/inspect-upload`,
         token,
@@ -929,14 +1108,11 @@ function Upload({
         "uncertain",
         "unavailable",
       ].includes(result.content_check);
-      const inferredRole = permitted.some(([key]) => key === result.role)
+      const inferredRole =
+        (!factoryRecord || result.content_check === "valid") &&
+        permitted.some(([key]) => key === result.role)
         ? result.role
         : null;
-      if (factoryRecord && inferredRole && inferredRole !== expectedRole) {
-        setRole(inferredRole);
-        await readPdf(selected, inferredRole);
-        return;
-      }
       const validInspectionSource =
         !inspection ||
         (semanticCheckRan
@@ -979,12 +1155,13 @@ function Upload({
       const warnings = [...result.warnings];
       if (
         factoryRecord &&
+        !!expectedRole &&
         result.content_check === "not_configured" &&
         result.readable_pages > 0 &&
         result.role !== expectedRole
       ) {
         warnings.push(
-          `OCR identified this as “${roles[result.role]}”, but the selected role is “${roles[expectedRole]}”.`,
+          `OCR identified this as “${roles[result.role]}”, but the selected role is “${expectedRole ? roles[expectedRole] : "none"}”.`,
         );
       } else if (
         !factoryRecord &&
@@ -998,15 +1175,7 @@ function Upload({
         );
       }
       setExtracted({ ...result, warnings });
-      if (!factoryRecord && inferredRole) setRole(inferredRole);
-      const matchedRole = factoryRecord ? expectedRole : inferredRole || role;
-      const matched = d.documents.find(
-        (item) =>
-          item.role === matchedRole &&
-          item.title.trim().toLowerCase() ===
-            (result.title || "").trim().toLowerCase(),
-      );
-      if (matched) setDoc(matched.id);
+      if (!expectedRole && inferredRole) setRole(inferredRole);
     } catch (error) {
       setExtractError(message(error));
     } finally {
@@ -1015,7 +1184,7 @@ function Upload({
   }
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!file || invalidDocument) return;
+    if (!file || !role || invalidDocument) return;
     setBusy(true);
     setErr("");
     const form = new FormData(e.currentTarget);
@@ -1090,13 +1259,36 @@ function Upload({
           <input
             type="file"
             accept=".pdf,application/pdf"
+            disabled={duplicateCap}
             required
-            onChange={(e) => void readPdf(e.target.files?.[0] || null)}
+            onChange={(e) => {
+              setRole("");
+              setDoc("");
+              void readPdf(e.target.files?.[0] || null, "");
+            }}
           />
         </label>
         {extracting && (
           <p className="hint" role="status">
-            Reading the first pages and filling in fields from the PDF…
+            Reading the full PDF and filling in fields from it…
+          </p>
+        )}
+        {duplicateCap && (
+          <p className="callout invalid-document" role="alert">
+            This case already has a CAP. A second CAP cannot be uploaded, even
+            if it has a different filename. Use the existing CAP record.
+          </p>
+        )}
+        {exactDuplicate && !duplicateCap && (
+          <p className="callout invalid-document" role="alert">
+            This PDF has the same readable document text as an existing upload
+            in this case. It cannot be uploaded again, even with a different
+            filename.
+          </p>
+        )}
+        {extracted?.duplicate_warning && !exactDuplicate && (
+          <p className="callout duplicate-warning" role="status">
+            Possible duplicate: {extracted.duplicate_warning}
           </p>
         )}
         {extractError && (
@@ -1119,6 +1311,11 @@ function Upload({
         {(inspection || factoryRecord) && extracted?.content_check === "valid" && (
           <p className="callout success-document" role="status">
             {factoryRecord ? "Factory document check passed" : "Content check passed"}: {extracted.content_reason} This checks the document type, not whether its claims are true.
+          </p>
+        )}
+        {capDeadlineWarning && (
+          <p className="deadline-warning" role="alert">
+            CAP deadline flag: {capDeadlineWarning}
           </p>
         )}
         {(inspection || factoryRecord) && extracted?.content_check === "not_configured" && (
@@ -1147,7 +1344,7 @@ function Upload({
               {warning}
             </p>
           ))}
-        {invalidDocument && (
+        {invalidDocument && !duplicateCap && !exactDuplicate && (
           <p className="callout invalid-document" role="alert">
             {validationMessage}
           </p>
@@ -1161,25 +1358,30 @@ function Upload({
             onChange={(e) => setTitle(e.target.value)}
           />
         </label>
+        <label>
+          Document role
+          <select
+            required
+            value={role}
+            onChange={(e) => {
+              const nextRole = e.target.value as Role;
+              setRole(nextRole);
+              setDoc("");
+              if (factoryRecord && file) void readPdf(file, nextRole);
+            }}
+          >
+            <option value="">Choose a document role</option>
+            {permitted.map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+          {file && !role && (
+            <small>OCR could not identify the role. Select it manually.</small>
+          )}
+        </label>
         <div className="field-pair">
-          <label>
-            Document role
-            <select
-              value={role}
-              onChange={(e) => {
-                const nextRole = e.target.value as Role;
-                setRole(nextRole);
-                setDoc("");
-                if (factoryRecord && file) void readPdf(file, nextRole);
-              }}
-            >
-              {permitted.map(([k, t]) => (
-                <option key={k} value={k}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
           {!scheduled && (
             <label>
               Issuer
@@ -1195,25 +1397,27 @@ function Upload({
             </label>
           )}
         </div>
-        <label>
-          Document relationship
-          <select value={doc} onChange={(e) => setDoc(e.target.value)}>
-            <option value="">New, separate record</option>
-            {d.documents
-              .filter((v) => v.role === role)
-              .map((v) => (
-                <option key={v.id} value={v.id}>
-                  Revision of {v.title}
-                </option>
-              ))}
-          </select>
-        </label>
+        {!duplicateCap && (
+          <label>
+            Document relationship
+            <select value={doc} onChange={(e) => setDoc(e.target.value)}>
+              <option value="">New, separate record</option>
+              {d.documents
+                .filter((v) => v.role === role)
+                .map((v) => (
+                  <option key={v.id} value={v.id}>
+                    Revision of {v.title}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         <label>
           {inspection ? "Inspection date on the PDF" : "Issue date"}
           <input
             name="issued_on"
             type="date"
-            required={inspection}
+            required={inspection || factoryRecord}
             value={issuedOn}
             onChange={(e) => setIssuedOn(e.target.value)}
           />
@@ -1231,33 +1435,35 @@ function Upload({
             so their dates do not have to match the inspection date.
           </p>
         )}
-        <div className="field-pair">
-          <label>
-            Period starts
-            <input
-              name="period_start"
-              type="date"
-              value={periodStart}
-              onChange={(e) => {
-                const next = e.target.value;
-                setPeriodStart(next);
-                if (periodEnd && next && periodEnd < next) setPeriodEnd("");
-              }}
-              {...bounds}
-            />
-          </label>
-          <label>
-            Period ends
-            <input
-              name="period_end"
-              type="date"
-              value={periodEnd}
-              onChange={(e) => setPeriodEnd(e.target.value)}
-              {...bounds}
-              min={periodStart || bounds.min}
-            />
-          </label>
-        </div>
+        {!factoryRecord && role !== "cap" && (
+          <div className="field-pair">
+            <label>
+              Period starts
+              <input
+                name="period_start"
+                type="date"
+                value={periodStart}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setPeriodStart(next);
+                  if (periodEnd && next && periodEnd < next) setPeriodEnd("");
+                }}
+                {...bounds}
+              />
+            </label>
+            <label>
+              Period ends
+              <input
+                name="period_end"
+                type="date"
+                value={periodEnd}
+                onChange={(e) => setPeriodEnd(e.target.value)}
+                {...bounds}
+                min={periodStart || bounds.min}
+              />
+            </label>
+          </div>
+        )}
         {inspection &&
           extracted?.inspection_date &&
           !extracted.period_start && (
@@ -1281,7 +1487,9 @@ function Upload({
             disabled={
               busy ||
               extracting ||
+              !role ||
               !file ||
+              duplicateCap ||
               invalidDocument ||
               (factoryRecord && !!extractError)
             }

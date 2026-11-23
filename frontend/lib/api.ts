@@ -52,6 +52,9 @@ export type Version = Meta & {
   readable_pages: number;
   error: string | null;
   duplicate_of?: string;
+  duplicate_warning?: string | null;
+  content_fingerprint?: string | null;
+  cap_deadline_warning?: string | null;
 };
 export type PageInfo = {
   id: string;
@@ -96,6 +99,15 @@ export type Job = {
   completed: number;
   total: number;
   error: string | null;
+};
+export type ReviewerNotification = {
+  id: string;
+  case_id: string;
+  document_id: string;
+  title: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
 };
 export type Dossier = {
   case: Case;

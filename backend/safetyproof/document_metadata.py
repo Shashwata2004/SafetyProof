@@ -45,6 +45,19 @@ def _first_date(text):
     return parse_date(match.group()) if match else None
 
 
+def extract_cap_submission_deadline(pages):
+    """Read an explicitly labelled CAP submission deadline from report text."""
+    label = re.compile(r"\bCAP\s+submission\s+deadline\s*[:：-]?", re.IGNORECASE)
+    for page in pages:
+        for line in page.get("text", "").translate(BENGALI_DIGITS).splitlines():
+            match = label.search(line)
+            if match:
+                deadline = _first_date(line[match.end() :])
+                if deadline:
+                    return deadline
+    return None
+
+
 def _date_pair(text):
     month_range = MONTH_RANGE.search(text)
     if month_range:
@@ -86,7 +99,9 @@ def extract_metadata(pages, filename, scheduled_date=None):
     ]
     text = "\n".join(lines)
     lower = (text + "\n" + filename).lower()
-    header = ("\n".join(lines[:18]) + "\n" + filename).lower()
+    header = re.sub(
+        r"[-_]+", " ", ("\n".join(lines[:18]) + "\n" + filename).lower()
+    )
 
     if re.search(
         r"\b(corrective action plan|\bcap[-\s]?(?:\d|:)|cap status)\b", header
