@@ -1,0 +1,51 @@
+:root {
+  --sp-bg: #f4f3f1;
+  --sp-surface: #ffffff;
+  --sp-surface-soft: #f9f8f6;
+  --sp-sidebar: #16233a;
+  --sp-sidebar-soft: #22324d;
+  --sp-text: #152033;
+  --sp-muted: #687286;
+  --sp-line: #e4e1de;
+  --sp-coral: #ff6b6b;
+  --sp-pink: #f44f86;
+  --sp-violet: #7d67ea;
+  --sp-green: #3bb88f;
+  --sp-amber: #eba83a;
+  --sp-red: #df5a68;
+  --sp-shadow: 0 18px 50px rgba(35, 31, 28, 0.08);
+  --sp-radius: 24px;
+}
+
+:root[data-theme="dark"] {
+  --sp-bg: #0e1420;
+  --sp-surface: #171f2d;
+  --sp-surface-soft: #1c2636;
+  --sp-sidebar: #090f1a;
+  --sp-sidebar-soft: #172235;
+  --sp-text: #f4f6fa;
+  --sp-muted: #9da8ba;
+  --sp-line: #2a3547;
+  --sp-shadow: 0 22px 55px rgba(0, 0, 0, 0.28);
+}
+
+html { background: var(--sp-bg); }
+body { background: var(--sp-bg); color: var(--sp-text); }
+button, input, select, textarea { font: inherit; }
+.v2-page { min-height: 100svh; background: var(--sp-bg); color: var(--sp-text); }
+.v2-container { width: min(1180px, calc(100% - 40px)); margin-inline: auto; }
+.v2-card { border: 1px solid var(--sp-line); border-radius: var(--sp-radius); background: var(--sp-surface); box-shadow: var(--sp-shadow); }
+.v2-theme-toggle { width: 44px; height: 44px; border: 1px solid var(--sp-line); border-radius: 14px; background: var(--sp-surface); color: var(--sp-text); display: grid; place-items: center; cursor: pointer; }
+.v2-theme-toggle:focus-visible, .v2-button:focus-visible, .v2-link:focus-visible { outline: 3px solid color-mix(in srgb, var(--sp-violet) 45%, transparent); outline-offset: 2px; }
+.v2-button { min-height: 48px; padding: 0 22px; border: 0; border-radius: 14px; background: linear-gradient(135deg, var(--sp-coral), var(--sp-pink)); color: white; display: inline-flex; align-items: center; justify-content: center; gap: 9px; font-weight: 750; text-decoration: none; cursor: pointer; box-shadow: 0 12px 25px rgba(244, 79, 134, .22); }
+.v2-button.secondary { border: 1px solid var(--sp-line); background: var(--sp-surface); color: var(--sp-text); box-shadow: none; }
+.v2-eyebrow { color: var(--sp-pink); font-size: .77rem; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+
+@media (max-width: 720px) {
+  .v2-container { width: min(100% - 24px, 1180px); }
+  .v2-card { border-radius: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
