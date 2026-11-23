@@ -1,53 +1,70 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, CheckCircle2, FileSearch, Files, ShieldCheck, Users } from "lucide-react";
+import { Building2, CheckCircle2, ClipboardCheck, FileSearch, Files, ScanSearch, ShieldCheck, Users } from "lucide-react";
 import { AnimatedGarmentFactory } from "./animated-garment-factory";
 import { ThemeToggle } from "./theme-toggle";
 import { useAuth } from "./auth-provider";
 
-const steps = ["Upload documents", "Analyze evidence", "Review findings", "Track resolution"];
+const steps = [
+  [Files, "Upload documents"],
+  [ScanSearch, "Analyze evidence"],
+  [ClipboardCheck, "Review findings"],
+  [CheckCircle2, "Track resolution"],
+] as const;
 
 export function PublicHome() {
   const { state } = useAuth();
   const authenticated = state === "authenticated";
   return (
     <main className="v2-page public-home">
-      <header className="public-header v2-container">
-        <Link href="/" className="public-brand" aria-label="SafetyProof AI home">
-          <span><ShieldCheck aria-hidden="true" /></span>
-          <strong>SafetyProof <em>AI</em></strong>
-        </Link>
-        <nav aria-label="Public navigation">
-          <a href="#how-it-works">How it works</a>
-          <a href="#features">Features</a>
-          <a href="#roles">Roles</a>
-        </nav>
-        <div className="public-actions">
-          <ThemeToggle />
-          <Link className="v2-button secondary" href={authenticated ? "/dashboard" : "/login"}>
-            {authenticated ? "Dashboard" : "Sign in"}
-          </Link>
-        </div>
-      </header>
-
-      <section className="public-hero v2-container">
-        <div className="hero-factory">
+      <section className="industrial-hero">
+        <div className="industrial-scene" aria-hidden="true">
           <AnimatedGarmentFactory />
         </div>
-        <div className="hero-copy">
-          <span className="v2-eyebrow">Documentary safety evidence</span>
-          <h1>Turn Safety Documents into Verifiable Evidence</h1>
-          <p>SafetyProof AI organizes workplace-safety records for garment factories, links findings to source citations, and keeps human reviewers in control.</p>
-          <div className="hero-actions">
-            <Link className="v2-button" href={authenticated ? "/dashboard" : "/login"}>Get started</Link>
-            <a className="v2-button secondary" href="#about">Learn more</a>
+        <div className="industrial-vignette" />
+        <header className="public-header v2-container">
+          <Link href="/" className="public-brand industrial-brand" aria-label="SafetyProof AI home">
+            <span><ShieldCheck aria-hidden="true" /></span>
+            <strong>SafetyProof <em>AI</em></strong>
+          </Link>
+          <nav aria-label="Public navigation">
+            <a href="#how-it-works">How it works</a>
+            <a href="#features">Capabilities</a>
+            <a href="#roles">Access</a>
+          </nav>
+          <div className="public-actions">
+            <ThemeToggle />
+            <Link className="v2-button glass-button" href={authenticated ? "/dashboard" : "/login"}>
+              {authenticated ? "Open dashboard" : "Go to login"}
+            </Link>
           </div>
-          <p className="hero-caveat"><ShieldCheck aria-hidden="true" /> AI assistance supports documentary review; it does not replace professional inspection or certify factory safety.</p>
+        </header>
+
+        <div className="industrial-hero-content v2-container">
+          <div className="industrial-hero-panel">
+            <span className="industrial-kicker"><i /> Evidence operations platform</span>
+            <h1>Turn safety documents into verifiable evidence.</h1>
+            <p>SafetyProof AI connects workplace-safety findings to exact documentary sources, giving garment factories and professional reviewers one controlled evidence workspace.</p>
+            <div className="hero-actions">
+              <Link className="v2-button" href={authenticated ? "/dashboard" : "/login"}>{authenticated ? "Open dashboard" : "Go to login"}</Link>
+              <a className="v2-button glass-button" href="#about">Learn more</a>
+            </div>
+            <div className="industrial-capabilities" aria-label="Platform principles">
+              <span><ShieldCheck />Role controlled</span>
+              <span><FileSearch />Source cited</span>
+              <span><Users />Human reviewed</span>
+            </div>
+          </div>
+          <aside className="industrial-status-panel">
+            <span>System purpose</span>
+            <strong>Documentary evidence review</strong>
+            <p>AI assistance supports review. It does not replace professional inspection or certify factory safety.</p>
+          </aside>
         </div>
       </section>
 
-      <section id="about" className="public-section v2-container about-grid">
+      <section id="about" className="public-section v2-container about-grid industrial-section">
         <div>
           <span className="v2-eyebrow">What is SafetyProof AI?</span>
           <h2>A traceable workspace for evidence-backed review</h2>
@@ -58,9 +75,9 @@ export function PublicHome() {
       <section id="how-it-works" className="public-section v2-container">
         <div className="section-heading"><span className="v2-eyebrow">How it works</span><h2>From document to reviewed finding</h2></div>
         <div className="process-grid">
-          {steps.map((step, index) => (
+          {steps.map(([Icon, step]) => (
             <article className="v2-card process-card" key={step}>
-              <span>{index + 1}</span><strong>{step}</strong>
+              <span><Icon aria-hidden="true" /></span><strong>{step}</strong>
             </article>
           ))}
         </div>

@@ -54,20 +54,27 @@ export function LoginScreen() {
 
   return (
     <main className="v2-page login-page">
-      <section className="login-visual" aria-label="SafetyProof factory illustration">
-        <div className="login-visual-copy">
-          <Link href="/" className="public-brand light-brand"><span><ShieldCheck /></span><strong>SafetyProof <em>AI</em></strong></Link>
-          <div><span>Evidence you can trace</span><h1>Safer review starts with the source.</h1><p>Organize safety documents, inspect exact citations, and keep professional judgment at the center.</p></div>
-        </div>
+      <div className="login-scene" aria-hidden="true">
         <AnimatedGarmentFactory compact />
-      </section>
+      </div>
+      <div className="login-vignette" />
+      <header className="login-header v2-container">
+        <Link href="/" className="public-brand industrial-brand"><span><ShieldCheck /></span><strong>SafetyProof <em>AI</em></strong></Link>
+        <div><Link href="/">Public home</Link><ThemeToggle /></div>
+      </header>
 
-      <section className="login-form-panel">
-        <div className="login-topbar"><Link href="/">Back to home</Link><ThemeToggle /></div>
-        <div className="login-form-wrap">
-          <span className="v2-eyebrow">Secure workspace</span>
-          <h2>Welcome back</h2>
-          <p>Sign in with your existing authorized account.</p>
+      <div className="login-layout v2-container">
+        <section className="login-context" aria-label="SafetyProof introduction">
+          <span className="industrial-kicker"><i /> Controlled evidence workspace</span>
+          <h1>Every finding should lead back to the source.</h1>
+          <p>Organize safety documents, inspect exact citations, and keep professional judgment at the center of every review.</p>
+          <div className="login-context-note"><ShieldCheck /><span><strong>Secure by role</strong>Factory, case and review access remains enforced by the SafetyProof backend.</span></div>
+        </section>
+
+        <section className="login-form-wrap login-glass-panel">
+          <span className="v2-eyebrow">Authorized access</span>
+          <h2>Sign in</h2>
+          <p>Continue with your existing SafetyProof account.</p>
           {params.get("password") === "updated" && (
             <p className="v2-form-success" role="status">Your password is set. Sign in to continue.</p>
           )}
@@ -95,8 +102,8 @@ export function LoginScreen() {
             )}
           </div>
           <p className="login-security"><ShieldCheck /> Authentication and role permissions are verified by the SafetyProof backend.</p>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }
