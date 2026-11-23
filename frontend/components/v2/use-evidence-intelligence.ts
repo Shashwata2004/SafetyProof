@@ -1,6 +1,6 @@
 "use client";
 
-import { createClient, type Session } from "@supabase/supabase-js";
+import type { Session } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 import type { components } from "@/lib/schema";
 import { api, type Case, type Config, type Dossier, message } from "@/lib/api";
@@ -9,7 +9,8 @@ import {
   casesForFactory,
   latestReadableRun,
   type EvidenceResult,
-} from "./evidence-intelligence";
+} from "@/lib/evidence-intelligence";
+import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 type AccountState = "restoring" | "signed-out" | "loading" | "ready" | "error";
 type EvidenceState = "idle" | "loading" | "ready" | "error";
@@ -33,7 +34,7 @@ export function useEvidenceIntelligence() {
       try {
         const config = await api<Config>("/v1/config");
         if (!active) return;
-        const auth = createClient(config.supabase_url, config.publishable_key);
+        const auth = getSupabaseBrowserClient(config);
         const { data, error: sessionError } = await auth.auth.getSession();
         if (sessionError) throw sessionError;
         if (!active) return;
@@ -71,12 +72,12 @@ export function useEvidenceIntelligence() {
     setAccountState("loading");
     setError("");
     void api<components["schemas"]["AccountProfile"]>(
-        "/v1/me",
-        token,
-        "GET",
-        undefined,
-        controller.signal,
-      )
+      "/v1/me",
+      token,
+      "GET",
+      undefined,
+      controller.signal,
+    )
       .then(async (nextProfile) => {
         const nextCases = nextProfile.role === "admin"
           ? []

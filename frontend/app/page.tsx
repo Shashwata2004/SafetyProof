@@ -1,11 +1,4 @@
-import { Suspense } from "react";
-import { Workspace } from "@/components/workspace";
+import { PublicHome } from "@/components/v2/public-home";
 export default function Page() {
-  return (
-    <Suspense
-      fallback={<main className="boot">Opening evidence workspace…</main>}
-    >
-      <Workspace />
-    </Suspense>
-  );
+  return <PublicHome />;
 }

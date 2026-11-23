@@ -7,7 +7,7 @@ export default function Waiting() {
           Your application is waiting for admin approval. Try logging in later
           to check the result.
         </p>
-        <a href="/">Back to sign in</a>
+        <a href="/login">Back to sign in</a>
       </section>
     </main>
   );

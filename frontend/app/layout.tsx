@@ -2,16 +2,30 @@ import type { Metadata } from "next";
 import "@fontsource-variable/dm-sans";
 import "@fontsource/noto-sans-bengali/400.css";
 import "./style.css";
+import "./v2.css";
+import { ThemeProvider } from "@/components/v2/theme-provider";
+import { AuthProvider } from "@/components/v2/auth-provider";
 
 export const metadata: Metadata = {
-  title: "SafetyProof AI · Evidence workspace",
+  title: "SafetyProof AI · Verifiable evidence",
   description:
     "Cross-checking factory safety reports against their own evidence.",
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('safetyproof-theme');var m=t==='light'||t==='dark'?t:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=m;document.documentElement.style.colorScheme=m}catch(e){document.documentElement.dataset.theme='light'}})();`,
+          }}
+        />
+      </head>
+      <body>
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }
