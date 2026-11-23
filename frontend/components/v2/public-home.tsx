@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Building2, CheckCircle2, ClipboardCheck, FileSearch, Files, ScanSearch, ShieldCheck, Users } from "lucide-react";
 import { AnimatedGarmentFactory } from "./animated-garment-factory";
+import { ScrollReveal } from "./scroll-reveal";
 import { ThemeToggle } from "./theme-toggle";
 import { useAuth } from "./auth-provider";
 
@@ -18,6 +19,7 @@ export function PublicHome() {
   const authenticated = state === "authenticated";
   return (
     <main className="v2-page public-home">
+      <noscript><style>{`.scroll-reveal,.scroll-reveal>*{opacity:1!important;transform:none!important}`}</style></noscript>
       <section className="industrial-hero">
         <div className="industrial-scene" aria-hidden="true">
           <AnimatedGarmentFactory />
@@ -64,15 +66,15 @@ export function PublicHome() {
         </div>
       </section>
 
-      <section id="about" className="public-section v2-container about-grid industrial-section">
+      <ScrollReveal id="about" className="public-section v2-container about-grid industrial-section" direction="left">
         <div>
           <span className="v2-eyebrow">What is SafetyProof AI?</span>
           <h2>A traceable workspace for evidence-backed review</h2>
         </div>
         <p>Authorized factory personnel and independent reviewers can organize inspection records, compare claims with supporting documents, inspect exact source pages, and track corrective work through the existing application.</p>
-      </section>
+      </ScrollReveal>
 
-      <section id="how-it-works" className="public-section v2-container">
+      <ScrollReveal id="how-it-works" className="public-section v2-container reveal-stagger" direction="right">
         <div className="section-heading"><span className="v2-eyebrow">How it works</span><h2>From document to reviewed finding</h2></div>
         <div className="process-grid">
           {steps.map(([Icon, step]) => (
@@ -81,9 +83,9 @@ export function PublicHome() {
             </article>
           ))}
         </div>
-      </section>
+      </ScrollReveal>
 
-      <section id="features" className="public-section v2-container">
+      <ScrollReveal id="features" className="public-section v2-container reveal-stagger" direction="left">
         <div className="section-heading"><span className="v2-eyebrow">Main features</span><h2>Evidence stays connected to its source</h2></div>
         <div className="feature-grid">
           {[
@@ -96,21 +98,21 @@ export function PublicHome() {
             return <article className="v2-card feature-card" key={String(title)}><FeatureIcon aria-hidden="true" /><h3>{String(title)}</h3><p>{String(description)}</p></article>;
           })}
         </div>
-      </section>
+      </ScrollReveal>
 
-      <section id="roles" className="public-section v2-container roles-section">
+      <ScrollReveal id="roles" className="public-section v2-container roles-section reveal-stagger" direction="right">
         <div className="section-heading"><span className="v2-eyebrow">User roles</span><h2>One evidence chain, role-appropriate tools</h2></div>
         <div className="roles-grid">
           <article><Users /><div><strong>Reviewers and auditors</strong><p>Assess cases, inspect citations, review findings, and coordinate corrective work.</p></div></article>
           <article><Building2 /><div><strong>Factory managers</strong><p>Access assigned factory cases, documents, inspection notices, and corrective tasks.</p></div></article>
           <article><ShieldCheck /><div><strong>Administrators</strong><p>Manage factories, account access, assignments, applications, and scheduled inspections.</p></div></article>
         </div>
-      </section>
+      </ScrollReveal>
 
-      <section className="public-section v2-container getting-started v2-card">
+      <ScrollReveal className="public-section v2-container getting-started v2-card" direction="up" delay={70}>
         <div><span className="v2-eyebrow">Getting started</span><h2>Continue with your authorized SafetyProof account</h2><p>Sign in to reach the analytics dashboard and the workflows permitted for your role.</p></div>
         <Link className="v2-button" href={authenticated ? "/dashboard" : "/login"}>{authenticated ? "Open dashboard" : "Sign in securely"}</Link>
-      </section>
+      </ScrollReveal>
 
       <footer className="public-footer v2-container"><span>SafetyProof AI</span><span>Documentary evidence review · CoU AI Hackathon 2026</span></footer>
     </main>
