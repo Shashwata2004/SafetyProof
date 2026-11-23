@@ -237,11 +237,11 @@ button, input, select, textarea { font: inherit; }
 .collapse-button, .mobile-menu { width: 42px; height: 42px; border: 1px solid var(--sp-line); border-radius: 13px; background: var(--sp-surface); color: var(--sp-muted); display: grid; place-items: center; cursor: pointer; }
 .collapse-button svg, .mobile-menu svg { width: 19px; }
 .mobile-menu { display: none; }
-.dashboard-selectors { display: flex; gap: 8px; }
-.dashboard-selectors label { width: 155px; height: 48px; padding: 5px 30px 5px 11px; border: 1px solid var(--sp-line); border-radius: 13px; background: var(--sp-surface); position: relative; display: grid; }
+.dashboard-selectors { width: min(100%, 560px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dashboard-selectors label { min-width: 0; height: 52px; padding: 6px 34px 6px 12px; border: 1px solid var(--sp-line); border-radius: 13px; background: var(--sp-surface); position: relative; display: grid; }
 .dashboard-selectors label span { color: var(--sp-muted); font-size: .62rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.dashboard-selectors select { min-width: 0; border: 0; outline: 0; appearance: none; background: transparent; color: var(--sp-text); font-size: .78rem; font-weight: 680; text-overflow: ellipsis; }
-.dashboard-selectors label > svg { width: 15px; position: absolute; right: 10px; top: 17px; color: var(--sp-muted); pointer-events: none; }
+.dashboard-selectors select { width: 100%; min-width: 0; border: 0; outline: 0; appearance: none; overflow: hidden; background: transparent; color: var(--sp-text); font-size: .78rem; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-selectors label > svg { width: 15px; position: absolute; right: 11px; top: 19px; color: var(--sp-muted); pointer-events: none; }
 .dashboard-account { position: relative; }
 .dashboard-account > button { min-height: 48px; padding: 4px 9px 4px 5px; border: 1px solid var(--sp-line); border-radius: 14px; background: var(--sp-surface); color: var(--sp-text); display: flex; align-items: center; gap: 9px; cursor: pointer; }
 .dashboard-account > button > span { width: 37px; height: 37px; border-radius: 11px; background: linear-gradient(135deg, #457e8d, #1f5968); color: white; display: grid; place-items: center; font-weight: 800; }
@@ -290,6 +290,11 @@ button, input, select, textarea { font: inherit; }
 .unified-app-shell .notification-popover, .unified-app-shell .notification-popover-head { border-color: var(--sp-line); background: var(--sp-surface); color: var(--sp-text); }
 .unified-app-shell .notification-item { border-color: var(--sp-line); color: var(--sp-text); }
 .unified-app-shell .notification-item:hover, .unified-app-shell .notification-item.unread { background: var(--sp-surface-soft); }
+.unified-app-shell .case-metric { border-color: var(--sp-line); background: var(--sp-surface); color: var(--sp-text); }
+.unified-app-shell .case-metric:hover { border-color: color-mix(in srgb, var(--sp-pink) 55%, var(--sp-line)); background: var(--sp-surface-soft); }
+.unified-app-shell .case-metric svg { color: var(--sp-pink); }
+.unified-app-shell .case-metric strong { color: var(--sp-text); }
+.unified-app-shell .case-metric span { color: var(--sp-muted); }
 .v2-workspace-notice { margin: 0 0 18px; padding: 13px 16px; border: 1px solid color-mix(in srgb, var(--sp-amber) 45%, var(--sp-line)); border-radius: 14px; background: color-mix(in srgb, var(--sp-amber) 10%, var(--sp-surface)); color: var(--sp-text); font-weight: 700; }
 .analytics-welcome { min-height: 180px; padding: clamp(28px, 4vw, 50px); border-radius: var(--sp-radius); background: linear-gradient(120deg, #15323b, #23636d 66%, #a8642f); color: white; box-shadow: 0 22px 55px rgba(12,48,57,.22); display: flex; align-items: center; justify-content: space-between; gap: 30px; overflow: hidden; position: relative; }
 .analytics-welcome::after { content: ""; position: absolute; width: 280px; height: 280px; right: -60px; top: -110px; border: 55px solid rgba(255,255,255,.09); border-radius: 50%; }
@@ -302,9 +307,9 @@ button, input, select, textarea { font: inherit; }
 .dashboard-empty h2 { margin: 18px 0 8px; }
 .dashboard-empty p { max-width: 600px; margin: 0 0 24px; color: var(--sp-muted); line-height: 1.7; }
 .kpi-grid { margin-top: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-.kpi-card { min-height: 140px; padding: 22px; border: 1px solid var(--sp-line); border-radius: 20px; background: var(--sp-surface); box-shadow: var(--sp-shadow); display: grid; align-content: space-between; }
-.kpi-card span, .kpi-card small { color: var(--sp-muted); font-size: .76rem; }
-.kpi-card strong { font-size: 2.35rem; letter-spacing: -.055em; }
+.kpi-card { min-width: 0; min-height: 160px; padding: 22px; border: 1px solid var(--sp-line); border-radius: 20px; background: var(--sp-surface); box-shadow: var(--sp-shadow); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; align-items: start; gap: 13px; overflow: hidden; }
+.kpi-card span, .kpi-card small { display: block; color: var(--sp-muted); font-size: .76rem; line-height: 1.35; overflow-wrap: anywhere; }
+.kpi-card strong { align-self: center; font-size: clamp(2rem, 3vw, 2.35rem); line-height: .95; letter-spacing: -.055em; }
 .kpi-card.highlight { border: 0; background: linear-gradient(135deg, #2f929a, #1c5668); color: white; }
 .kpi-card.highlight span, .kpi-card.highlight small { color: rgba(255,255,255,.78); }
 .analytics-grid { margin-top: 18px; display: grid; grid-template-columns: 1.05fr 1fr .82fr; gap: 16px; }
@@ -355,7 +360,6 @@ button, input, select, textarea { font: inherit; }
 
 @media (max-width: 1240px) {
   .dashboard-account > button > div { display: none; }
-  .dashboard-selectors label { width: 130px; }
   .analytics-grid { grid-template-columns: 1fr 1fr; }
   .trend-card { grid-column: 1 / -1; min-height: 250px; }
   .chart-empty { height: 150px; }
@@ -372,7 +376,8 @@ button, input, select, textarea { font: inherit; }
   .collapse-button { display: none; }
   .mobile-menu { display: grid; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-  .dashboard-selectors { display: none; }
+  .dashboard-page-tools { justify-content: stretch; }
+  .dashboard-selectors { width: 100%; }
   .unified-workspace { min-height: calc(100svh - 76px); }
 }
 
@@ -381,6 +386,7 @@ button, input, select, textarea { font: inherit; }
   .dashboard-title-group .v2-eyebrow { display: none; }
   .dashboard-title-group h1 { font-size: 1.05rem; }
   .dashboard-account > button > svg { display: none; }
+  .dashboard-selectors { grid-template-columns: 1fr; }
   .analytics-content { padding: 14px; }
   .unified-workspace, .unified-admin-content.admin-content { padding: 14px; }
   .analytics-welcome { min-height: 210px; padding: 26px; }
