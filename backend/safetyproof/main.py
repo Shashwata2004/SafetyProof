@@ -21,6 +21,7 @@ from .document_metadata import extract_metadata
 from .document_validation import (
     check_factory_record_content,
     check_inspection_content,
+    factory_name_is_present,
 )
 from .models import (
     CapReviewInput,
@@ -37,6 +38,18 @@ from .worker import isolated_pdf, loop
 
 cfg = settings()
 bearer = HTTPBearer(auto_error=False)
+
+
+async def factory_identity_in_pdf(data, version_id, parsed, tessdata, factory):
+    """Search all OCR batches if the expected factory is absent from the first batch."""
+    if factory_name_is_present(parsed["pages"], factory):
+        return True
+    total_pages = parsed["total_pages"]
+    for offset in range(len(parsed["pages"]), total_pages, 8):
+        batch = await isolated_pdf(data, version_id, tessdata, offset, 8)
+        if factory_name_is_present(batch["pages"], factory):
+            return True
+    return False
 
 
 @asynccontextmanager
@@ -406,10 +419,9 @@ async def inspect_upload(
             422, "Choose the factory record type before checking this PDF."
         )
     data = await file.read()
+    version_id = str(uuid4())
     try:
-        parsed = await isolated_pdf(
-            data, str(uuid4()), cfg.tessdata_prefix, 0, 8
-        )
+        parsed = await isolated_pdf(data, version_id, cfg.tessdata_prefix, 0, 8)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     fields = extract_metadata(
@@ -418,6 +430,9 @@ async def inspect_upload(
         case.get("inspection_on"),
     )
     if u.role == "reviewer" and case.get("inspection_on"):
+        identity_found = await factory_identity_in_pdf(
+            data, version_id, parsed, cfg.tessdata_prefix, case["factory"]
+        )
         fields.update(
             await check_inspection_content(
                 parsed["pages"],
@@ -425,9 +440,13 @@ async def inspect_upload(
                 case["factory"],
                 case["inspection_on"],
                 request.app.state.ai,
+                factory_name_present=identity_found,
             )
         )
     elif u.role == "factory_manager":
+        identity_found = await factory_identity_in_pdf(
+            data, version_id, parsed, cfg.tessdata_prefix, case["factory"]
+        )
         fields.update(
             await check_factory_record_content(
                 parsed["pages"],
@@ -436,6 +455,7 @@ async def inspect_upload(
                 case.get("inspection_on"),
                 expected_role,
                 request.app.state.ai,
+                factory_name_present=identity_found,
             )
         )
     else:
@@ -467,6 +487,9 @@ async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depen
                     )
                 except ValueError as exc:
                     raise HTTPException(422, str(exc)) from exc
+                identity_found = await factory_identity_in_pdf(
+                    data, str(vid), parsed, cfg.tessdata_prefix, case["factory"]
+                )
                 metadata = extract_metadata(
                     parsed["pages"],
                     v.get("filename") or "inspection.pdf",
@@ -494,6 +517,7 @@ async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depen
                     case["factory"],
                     case["inspection_on"],
                     request.app.state.ai,
+                    factory_name_present=identity_found,
                 )
                 if content_check["content_check"] not in (
                     "valid",
@@ -528,6 +552,9 @@ async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depen
                 parsed = await isolated_pdf(data, str(vid), cfg.tessdata_prefix, 0, 8)
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from exc
+            identity_found = await factory_identity_in_pdf(
+                data, str(vid), parsed, cfg.tessdata_prefix, case["factory"]
+            )
             metadata = extract_metadata(
                 parsed["pages"],
                 v.get("filename") or "factory-record.pdf",
@@ -540,6 +567,7 @@ async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depen
                 case["inspection_on"],
                 document["role"],
                 request.app.state.ai,
+                factory_name_present=identity_found,
             )
             valid_without_ai = (
                 content_check["content_check"] == "not_configured"
