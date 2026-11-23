@@ -22,7 +22,7 @@ test("reviewer request keeps its existing fields and backend workflow", () => {
 });
 
 test("auth glass remains theme-aware and fields retain opaque contrast", () => {
-  assert.match(css, /\.login-glass-panel \{[^}]*background: rgba\(245,249,248,\.68\)/s);
-  assert.match(css, /:root\[data-theme="dark"\] \.login-glass-panel \{[^}]*background: rgba\(10,24,30,\.64\)/s);
+  assert.match(css, /\.login-glass-panel \{[^}]*background: rgba\(245,249,248,\.6\)/s);
+  assert.match(css, /:root\[data-theme="dark"\] \.login-glass-panel \{[^}]*background: rgba\(10,24,30,\.56\)/s);
   assert.match(css, /\.v2-access-form input:not\(\[type="hidden"\]\), \.v2-access-form select \{[^}]*var\(--sp-surface\)/s);
 });
