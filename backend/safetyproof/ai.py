@@ -72,41 +72,90 @@ def provider_failure(exc):
 class Gemini:
     def __init__(self, cfg):
         self.cfg = cfg
-        self.client = (
+        self.clients = [
             genai.Client(
-                api_key=cfg.gemini_api_key,
+                api_key=key,
                 http_options=types.HttpOptions(timeout=65000),
             )
-            if cfg.gemini_api_key
-            else None
-        )
-        self.last_request = 0.0
+            for key in cfg.gemini_keys()
+        ]
+        self.client = self.clients[0] if self.clients else None
+        self.next_client = 0
+        self.last_requests = [0.0 for _ in self.clients]
+        self.cooldowns = [0.0 for _ in self.clients]
         self.lock = asyncio.Lock()
 
     async def request(self, fn):
-        if not self.client:
+        if not self.clients:
             raise InferenceFailure(
                 "Set the server's GEMINI_API_KEY and retry.", pause=True
             )
         async with self.lock:
-            await asyncio.sleep(
-                max(
-                    0,
-                    self.cfg.min_request_interval
-                    - (time.monotonic() - self.last_request),
-                )
+            now = time.monotonic()
+            count = len(self.clients)
+            interval = (
+                self.cfg.gemini_key_min_interval
+                if count > 1
+                else self.cfg.min_request_interval
             )
-            self.last_request = time.monotonic()
-            try:
-                return await fn()
-            except errors.APIError as exc:
-                raise provider_failure(exc) from exc
-            except (TimeoutError, ConnectionError) as exc:
-                raise InferenceFailure("Inference timed out.") from exc
+            start = self.next_client
+            rate_limited = []
+            cooldown_waits = []
+            for offset in range(count):
+                index = (start + offset) % count
+                now = time.monotonic()
+                if self.cooldowns[index] > now:
+                    cooldown_waits.append(self.cooldowns[index] - now)
+                    continue
+                await asyncio.sleep(
+                    max(0, interval - (now - self.last_requests[index]))
+                )
+                self.last_requests[index] = time.monotonic()
+                try:
+                    result = await fn(self.clients[index])
+                except errors.APIError as exc:
+                    failure = provider_failure(exc)
+                    if count > 1 and getattr(exc, "code", None) in (401, 403, 429):
+                        if exc.code == 429:
+                            self.cooldowns[index] = max(
+                                self.cooldowns[index],
+                                time.monotonic() + failure.delay,
+                            )
+                            rate_limited.append(failure.delay)
+                        self.next_client = (index + 1) % count
+                        continue
+                    raise failure from exc
+                except (TimeoutError, ConnectionError) as exc:
+                    raise InferenceFailure("Inference timed out.") from exc
+                self.next_client = (index + 1) % count
+                return result
+
+            self.next_client = (start + 1) % count
+            if rate_limited:
+                delay = max(2, min(rate_limited))
+                raise InferenceFailure(
+                    "All configured Gemini projects are currently rate limited. Retry after a project quota becomes available.",
+                    pause=True,
+                    delay=delay,
+                )
+            if cooldown_waits:
+                delay = max(2, int(min(cooldown_waits)))
+                raise InferenceFailure(
+                    "All configured Gemini projects are cooling down after quota limits.",
+                    pause=True,
+                    delay=delay,
+                )
+            raise InferenceFailure(
+                "No configured Gemini project could complete the request.",
+                pause=True,
+            )
+
+    async def aclose(self):
+        await asyncio.gather(*(client.aio.aclose() for client in self.clients))
 
     async def structured(self, instruction, data, schema):
         response = await self.request(
-            lambda: self.client.aio.models.generate_content(
+            lambda client: client.aio.models.generate_content(
                 model=self.cfg.llm_model,
                 contents=json.dumps(data, ensure_ascii=False),
                 config=types.GenerateContentConfig(
@@ -135,7 +184,7 @@ class Gemini:
 
     async def embed(self, texts, task):
         r = await self.request(
-            lambda: self.client.aio.models.embed_content(
+            lambda client: client.aio.models.embed_content(
                 model=self.cfg.embedding_model,
                 contents=texts,
                 config=types.EmbedContentConfig(

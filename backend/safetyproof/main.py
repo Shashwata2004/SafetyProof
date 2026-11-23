@@ -74,8 +74,7 @@ async def lifespan(app):
                 task.cancel()
                 with suppress(asyncio.CancelledError):
                     await task
-            if app.state.ai.client:
-                await app.state.ai.client.aio.aclose()
+            await app.state.ai.aclose()
 
 
 app = FastAPI(title="SafetyProof AI", version="1.0.0", lifespan=lifespan)
@@ -210,7 +209,7 @@ def public_config():
     return {
         "supabase_url": cfg.supabase_url,
         "publishable_key": cfg.supabase_anon_key,
-        "ai_configured": bool(cfg.gemini_api_key),
+        "ai_configured": bool(cfg.gemini_keys()),
         "models": cfg.provenance(),
         "limits": {"case_documents": 10},
     }
@@ -1041,7 +1040,7 @@ async def new_run(
     cid: UUID, body: RunInput, request: Request, u: User = Depends(user), d=Depends(db)
 ):
     await d.one("cases", cid, token=u.token)
-    if not cfg.gemini_api_key:
+    if not cfg.gemini_keys():
         raise HTTPException(
             503, "The service needs a Gemini API key to run verification."
         )
