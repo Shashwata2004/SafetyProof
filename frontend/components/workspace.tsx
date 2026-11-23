@@ -13,18 +13,10 @@ import {
   ArrowUpRight,
   Bell,
   ChevronRight,
-  ClipboardCheck,
-  FileCheck2,
   Files,
   FolderOpen,
-  History,
-  Layers3,
-  LayoutDashboard,
   LibraryBig,
-  Link2,
   LogOut,
-  Menu,
-  ShieldCheck,
 } from "lucide-react";
 import {
   api,
@@ -75,8 +67,7 @@ function App({ basePath }: { basePath: string }) {
   });
   const [auth, setAuth] = useState<SupabaseClient | null>(null),
     [session, setSession] = useState<Session | null>(null);
-  const [restoring, setRestoring] = useState(true),
-    [mobile, setMobile] = useState(false);
+  const [restoring, setRestoring] = useState(true);
   const [dialog, setDialog] = useState<"account" | null>(null),
     [preview, setPreview] = useState<Preview | null>(null),
     [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -180,7 +171,6 @@ function App({ basePath }: { basePath: string }) {
     if (run) p.set("run", run);
     if (item) p.set("item", item);
     router.push(basePath + (p.size ? "?" + p : ""));
-    setMobile(false);
   }
   async function refresh() {
     await Promise.all([cases.refetch(), ...(cid ? [dossier.refetch()] : [])]);
@@ -219,14 +209,6 @@ function App({ basePath }: { basePath: string }) {
   }
   const sample = sampleCatalog;
   const current = token && cid ? dossier.data : undefined;
-  const title =
-    view === "library"
-      ? "Document library"
-      : current
-        ? current.case.title
-        : isManager
-          ? "Factory cases"
-          : "Review cases";
   if (restoring || (token && identity.isPending))
     return (
       <main className="boot">
@@ -280,97 +262,12 @@ function App({ basePath }: { basePath: string }) {
         ? requestedView
         : "factories";
     return (
-      <AdminWorkspace
-        token={token}
-        view={view}
-        signout={() => void signout()}
-        changeView={(v) => go(v)}
-      />
+      <AdminWorkspace token={token} view={view} />
     );
   }
-  const nav = (label: string, v: string, Icon: typeof Files, id = "") => (
-    <button
-      className={"nav-link " + (view === v ? "active" : "")}
-      onClick={() => go(v, id)}
-    >
-      <Icon size={19} />
-      {label}
-    </button>
-  );
   return (
-    <div className="shell">
-      {mobile && (
-        <button
-          className="scrim"
-          aria-label="Close navigation"
-          onClick={() => setMobile(false)}
-        />
-      )}
-      <aside className={"sidebar " + (mobile ? "open" : "")}>
-        <button className="brand" onClick={() => go("cases")}>
-          <span className="brand-mark">
-            <FileCheck2 size={25} strokeWidth={1.8} />
-          </span>
-          <span>
-            SafetyProof <small>AI</small>
-          </span>
-        </button>
-        <div className="nav-block">
-          <div className="nav-caption">Workspace</div>
-          {nav(
-            isManager ? "Factory cases" : "Review cases",
-            "cases",
-            FolderOpen,
-          )}
-          {!isManager && nav("Document library", "library", LibraryBig)}
-        </div>
-        {current && (
-          <div className="nav-block">
-            <div className="nav-caption">Current case</div>
-            {current.role !== "manager" && (
-              <>
-                {nav("Overview", "overview", LayoutDashboard, cid)}
-                {nav("Documents", "documents", Files, cid)}
-                {nav("Review queue", "review", ClipboardCheck, cid)}
-                {nav("CAP matching", "cap", Link2, cid)}
-                {nav("Run history", "history", History, cid)}
-              </>
-            )}
-            {current.role === "manager" &&
-              current.case.inspection_on &&
-              nav("Documents", "documents", Files, cid)}
-            {current.role !== "viewer" &&
-              nav("Corrective work", "corrective", ClipboardCheck, cid)}
-          </div>
-        )}
-        <div className="side-bottom">
-          <div className="side-rule" />
-          <button className="user-tile" onClick={() => setDialog("account")}>
-            <span className="avatar">{accountName[0].toUpperCase()}</span>
-            <span>
-              <b title={accountName}>{accountName}</b>
-              <small>Account settings</small>
-            </span>
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </aside>
-      <div className="maincol">
-        <header className="topbar">
-          <button
-            className="mobile-menu icon-button"
-            aria-label="Open navigation"
-            onClick={() => setMobile(true)}
-          >
-            <Menu />
-          </button>
-          <div className="breadcrumb">
-            <Layers3 size={16} />
-            <button onClick={() => go("cases")}>Workspace</button>
-            <ChevronRight size={13} />
-            <strong>{title}</strong>
-          </div>
-          <div className="topbar-actions">
+    <div className="unified-workspace">
+      <div className="workspace-context-actions">
             {role === "reviewer" && (
               <div className="notification-menu">
                 <button
@@ -444,15 +341,11 @@ function App({ basePath }: { basePath: string }) {
                 )}
               </div>
             )}
-            <button className="top-account" onClick={() => setDialog("account")}>
-              <span className="online" />
-              <span className="account-name" title={accountName}>
-                {accountName}
-              </span>
+            <button className="v2-button secondary workspace-profile-button" onClick={() => setDialog("account")}>
+              Account details
             </button>
-          </div>
-        </header>
-        <main className="content">
+      </div>
+        <main className="content unified-workspace-content">
           {view === "library" ? (
             <>
               <div className="page-head">
@@ -754,14 +647,6 @@ function App({ basePath }: { basePath: string }) {
             </>
           )}
         </main>
-        <footer className="app-foot">
-          <span>
-            <ShieldCheck size={14} />
-            SafetyProof AI
-          </span>
-          <span>Documentary evidence review</span>
-        </footer>
-      </div>
       {preview && (
         <Viewer item={preview} token={token} close={() => setPreview(null)} />
       )}

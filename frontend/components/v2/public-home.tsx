@@ -42,6 +42,11 @@ export function PublicHome() {
         </header>
 
         <div className="industrial-hero-content v2-container">
+          <aside className="industrial-status-panel">
+            <span>System purpose</span>
+            <strong>Documentary evidence review</strong>
+            <p>AI assistance supports review. It does not replace professional inspection or certify factory safety.</p>
+          </aside>
           <div className="industrial-hero-panel">
             <span className="industrial-kicker"><i /> Evidence operations platform</span>
             <h1>Turn safety documents into verifiable evidence.</h1>
@@ -56,11 +61,6 @@ export function PublicHome() {
               <span><Users />Human reviewed</span>
             </div>
           </div>
-          <aside className="industrial-status-panel">
-            <span>System purpose</span>
-            <strong>Documentary evidence review</strong>
-            <p>AI assistance supports review. It does not replace professional inspection or certify factory safety.</p>
-          </aside>
         </div>
       </section>
 

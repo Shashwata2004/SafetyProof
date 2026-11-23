@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import {
   BarChart3,
   Building2,
@@ -11,14 +11,8 @@ import {
   FileCheck2,
   Files,
   FolderOpen,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
   ShieldCheck,
   Users,
-  X,
 } from "lucide-react";
 import { reviewStatus } from "@/lib/review";
 import { dateText } from "@/lib/api";
@@ -29,7 +23,6 @@ import {
 } from "@/lib/evidence-intelligence";
 import { useEvidenceIntelligence } from "./use-evidence-intelligence";
 import { useAuth } from "./auth-provider";
-import { ThemeToggle } from "./theme-toggle";
 
 const categories = Object.keys(officialStatusColors) as Array<keyof typeof officialStatusColors>;
 
@@ -60,30 +53,9 @@ export function AnalyticsDashboard() {
   const router = useRouter();
   const auth = useAuth();
   const evidence = useEvidenceIntelligence();
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem("safetyproof-sidebar");
-    setCollapsed(saved === "collapsed");
-  }, []);
-  useEffect(() => {
-    window.localStorage.setItem("safetyproof-sidebar", collapsed ? "collapsed" : "expanded");
-  }, [collapsed]);
   useEffect(() => {
     if (auth.state === "signed-out") router.replace("/login");
   }, [auth.state, router]);
-  useEffect(() => {
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMobileOpen(false);
-        setAccountOpen(false);
-      }
-    };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, []);
 
   const summary = useMemo(() => evidenceStatusCounts(evidence.results), [evidence.results]);
   const pending = evidence.results.filter((result) => reviewStatus(result) === "Pending review").length;
@@ -95,9 +67,7 @@ export function AnalyticsDashboard() {
   const reviewHref = evidence.selectedCaseId && evidence.run ? `/workspace?case=${encodeURIComponent(evidence.selectedCaseId)}&view=review&run=${encodeURIComponent(evidence.run.id)}` : caseHref;
   const documentHref = evidence.selectedCaseId ? `/workspace?case=${encodeURIComponent(evidence.selectedCaseId)}&view=documents` : caseHref;
 
-  const links = [
-    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, active: true },
-    ...(role === "admin"
+  const quickLinks = role === "admin"
       ? [
           { label: "Factories", href: "/workspace?view=factories", icon: Building2 },
           { label: "Team management", href: "/workspace?view=reviewers", icon: Users },
@@ -107,8 +77,7 @@ export function AnalyticsDashboard() {
           { label: "Evidence", href: caseHref, icon: FileCheck2 },
           { label: "Reviews", href: reviewHref, icon: ClipboardCheck },
           { label: "Documents", href: documentHref, icon: Files },
-        ]),
-  ];
+        ];
 
   if (auth.state === "loading" || evidence.accountState === "restoring") {
     return <main className="v2-page dashboard-loading"><span className="v2-loader" />Opening your dashboard…</main>;
@@ -119,36 +88,15 @@ export function AnalyticsDashboard() {
   if (auth.state !== "authenticated") return <main className="v2-page dashboard-loading">Redirecting to sign in…</main>;
 
   return (
-    <main className={`v2-page analytics-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
-      {mobileOpen && <button className="dashboard-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
-      <aside className={`analytics-sidebar ${mobileOpen ? "mobile-open" : ""}`} aria-label="Application navigation">
-        <div className="sidebar-brand"><span><ShieldCheck /></span>{!collapsed && <strong>SafetyProof <em>AI</em></strong>}<button className="mobile-sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Close navigation"><X /></button></div>
-        <nav>
-          {links.map(({ label, href, icon: Icon, active }) => <Link key={label} href={href} className={active ? "active" : ""} title={collapsed ? label : undefined} aria-label={label} onClick={() => setMobileOpen(false)}><Icon /><span>{label}</span></Link>)}
-        </nav>
-        <div className="sidebar-bottom"><Link href="/" aria-label="Public home"><Building2 /><span>Public home</span></Link></div>
-      </aside>
-
-      <section className="analytics-main">
-        <header className="analytics-topbar">
-          <div className="dashboard-title-group">
-            <button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu /></button>
-            <button className="collapse-button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}>{collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}</button>
-            <div><span className="v2-eyebrow">Evidence intelligence</span><h1>Analytics Dashboard</h1></div>
-          </div>
-          <div className="dashboard-top-actions">
-            {reviewerWorkspace && evidence.realMode && (
+    <div className="analytics-content dashboard-page-content">
+          {reviewerWorkspace && evidence.realMode && (
+            <div className="dashboard-page-tools" aria-label="Dashboard filters">
               <div className="dashboard-selectors">
                 <label><span>Factory</span><select value={evidence.selectedFactory} onChange={(event) => { evidence.setSelectedFactory(event.target.value); evidence.setSelectedCaseId(""); }} disabled={!evidence.factories.length}>{evidence.factories.length ? evidence.factories.map((factory) => <option key={factory}>{factory}</option>) : <option>No authorized factories</option>}</select><ChevronDown /></label>
                 <label><span>Case</span><select value={evidence.selectedCaseId} onChange={(event) => evidence.setSelectedCaseId(event.target.value)} disabled={!evidence.factoryCases.length}>{evidence.factoryCases.length ? evidence.factoryCases.map((item) => <option key={item.id} value={item.id}>{item.title}</option>) : <option>No authorized cases</option>}</select><ChevronDown /></label>
               </div>
-            )}
-            <ThemeToggle />
-            <div className="dashboard-account"><button onClick={() => setAccountOpen((value) => !value)} aria-expanded={accountOpen}><span>{(auth.profile?.full_name || auth.profile?.email || "A")[0].toUpperCase()}</span><div><strong>{auth.profile?.full_name || "SafetyProof account"}</strong><small>{role?.replaceAll("_", " ")}</small></div><ChevronDown /></button>{accountOpen && <div className="account-popover"><Link href={role === "admin" ? "/workspace?view=factories" : "/workspace?view=cases"}>Open workspace</Link><button onClick={() => void auth.signOut()}><LogOut />Sign out</button></div>}</div>
-          </div>
-        </header>
-
-        <div className="analytics-content">
+            </div>
+          )}
           <section className="analytics-welcome"><div><p>{selectedCase ? `${selectedCase.factory} · ${selectedCase.title}` : role === "admin" ? "Administration overview" : "Authorized evidence overview"}</p><h2>Good evidence makes every review clearer.</h2><span>Document classifications below describe evidence support; they are not a factory safety score.</span></div><BarChart3 /></section>
 
           {!reviewerWorkspace ? (
@@ -174,12 +122,10 @@ export function AnalyticsDashboard() {
 
               <section className="v2-card activity-card"><div className="card-heading"><div><span className="v2-eyebrow">Selected case</span><h2>Recent evidence records</h2></div>{evidence.selectedCaseId && <Link href={reviewHref}>Open review workflow</Link>}</div>{evidence.results.length ? <div className="activity-table"><div className="activity-table-head"><span>Source</span><span>Category</span><span>Review</span><span>Page</span></div>{evidence.results.slice(0, 6).map((result) => { const status = officialEvidenceStatus(result.outcome); return <Link href={`${reviewHref}&item=${encodeURIComponent(result.id)}`} key={result.id}><span><strong>{result.claim.source.document}</strong><small>{result.claim.source.quote}</small></span><span className="status-pill" style={{ color: status ? officialStatusColors[status] : undefined }}>{status || "Not available"}</span><span>{reviewStatus(result)}</span><span>{result.claim.source.page}</span></Link>; })}</div> : <div className="table-empty">{evidence.evidenceState === "loading" ? "Loading evidence…" : evidence.run ? "This run contains no published findings." : "No complete or partial verification run is available."}</div>}</section>
 
-              <section className="quick-actions"><h2>Quick actions</h2><div>{links.filter((item) => !item.active).map(({ label, href, icon: Icon }) => <Link className="v2-card" href={href} key={label}><Icon /><span>{label}</span></Link>)}</div></section>
+              <section className="quick-actions"><h2>Quick actions</h2><div>{quickLinks.map(({ label, href, icon: Icon }) => <Link className="v2-card" href={href} key={label}><Icon /><span>{label}</span></Link>)}</div></section>
             </>
           )}
           <footer className="dashboard-footer"><span>SafetyProof AI · Documentary evidence review</span><span>{dateText(new Date().toISOString())}</span></footer>
-        </div>
-      </section>
-    </main>
+    </div>
   );
 }
