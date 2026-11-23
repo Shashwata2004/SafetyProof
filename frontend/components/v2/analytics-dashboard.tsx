@@ -92,8 +92,8 @@ export function AnalyticsDashboard() {
           {reviewerWorkspace && evidence.realMode && (
             <div className="dashboard-page-tools" aria-label="Dashboard filters">
               <div className="dashboard-selectors">
-                <label><span>Factory</span><select value={evidence.selectedFactory} onChange={(event) => { evidence.setSelectedFactory(event.target.value); evidence.setSelectedCaseId(""); }} disabled={!evidence.factories.length}>{evidence.factories.length ? evidence.factories.map((factory) => <option key={factory}>{factory}</option>) : <option>No authorized factories</option>}</select><ChevronDown /></label>
-                <label><span>Case</span><select value={evidence.selectedCaseId} onChange={(event) => evidence.setSelectedCaseId(event.target.value)} disabled={!evidence.factoryCases.length}>{evidence.factoryCases.length ? evidence.factoryCases.map((item) => <option key={item.id} value={item.id}>{item.title}</option>) : <option>No authorized cases</option>}</select><ChevronDown /></label>
+                <label><span>Factory</span><select aria-label="Select factory" title={evidence.selectedFactory || "No authorized factories"} value={evidence.selectedFactory} onChange={(event) => { evidence.setSelectedFactory(event.target.value); evidence.setSelectedCaseId(""); }} disabled={!evidence.factories.length}>{evidence.factories.length ? evidence.factories.map((factory) => <option key={factory}>{factory}</option>) : <option>No authorized factories</option>}</select><ChevronDown /></label>
+                <label><span>Case</span><select aria-label="Select case" title={selectedCase?.title || "No authorized cases"} value={evidence.selectedCaseId} onChange={(event) => evidence.setSelectedCaseId(event.target.value)} disabled={!evidence.factoryCases.length}>{evidence.factoryCases.length ? evidence.factoryCases.map((item) => <option key={item.id} value={item.id}>{item.title}</option>) : <option>No authorized cases</option>}</select><ChevronDown /></label>
               </div>
             </div>
           )}
