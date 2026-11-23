@@ -86,9 +86,13 @@ PY
 
 COMMON_DIR="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)"
 
-port_pid() {
+port_pids() {
   command -v lsof >/dev/null 2>&1 || return 0
-  lsof -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -n 1 || true
+  lsof -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | sort -u || true
+}
+
+port_pid() {
+  port_pids "$1" | head -n 1 || true
 }
 
 pid_cwd() {
@@ -102,9 +106,8 @@ same_repository() {
   [[ "$common" == "$COMMON_DIR" ]]
 }
 
-stop_verified_listener() {
-  local port="$1" kind="$2" pid cwd command
-  pid="$(port_pid "$port")"
+stop_verified_pid() {
+  local pid="$1" port="$2" kind="$3" cwd command
   [[ -n "$pid" ]] || return 0
   cwd="$(pid_cwd "$pid")"
   command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
@@ -122,6 +125,10 @@ stop_verified_listener() {
   fail "SafetyProof $kind PID $pid did not stop cleanly."
 }
 
+stop_verified_listener() {
+  stop_verified_pid "$(port_pid "$1")" "$1" "$2"
+}
+
 wait_for() {
   local url="$1" label="$2" log="$3"
   for _ in {1..80}; do
@@ -131,6 +138,18 @@ wait_for() {
   printf '[SafetyProof] %s failed. Recent log output:\n' "$label" >&2
   tail -n 25 "$log" >&2 2>/dev/null || true
   return 1
+}
+
+verify_frontend() {
+  local base home login retired
+  for base in "http://127.0.0.1:3000" "http://localhost:3000"; do
+    home="$(curl -fsS --max-time 5 "$base/" 2>/dev/null || true)"
+    login="$(curl -fsS --max-time 5 "$base/login" 2>/dev/null || true)"
+    retired="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$base/design-preview/garment-command-center" 2>/dev/null || true)"
+    [[ "$home" == *"Evidence operations platform"* ]] || return 1
+    [[ "$login" == *"Authorized access"* ]] || return 1
+    [[ "$retired" == "404" ]] || return 1
+  done
 }
 
 STARTED_BACKEND=""
@@ -193,13 +212,22 @@ except Exception:
 PY
 say "FastAPI config and hosted Supabase Auth checks passed."
 
-frontend_pid="$(port_pid 3000)"
-if [[ -n "$frontend_pid" ]]; then
-  frontend_cwd="$(pid_cwd "$frontend_pid")"
-  if [[ "$frontend_cwd" == "$FRONTEND" ]] && curl -fsS --max-time 3 "$WEB_URL" >/dev/null 2>&1; then
-    say "Reusing the current worktree frontend on port 3000."
+frontend_pid=""
+while IFS= read -r listener_pid; do
+  [[ -n "$listener_pid" ]] || continue
+  frontend_cwd="$(pid_cwd "$listener_pid")"
+  if [[ "$frontend_cwd" == "$FRONTEND" && -z "$frontend_pid" ]]; then
+    frontend_pid="$listener_pid"
   else
-    stop_verified_listener 3000 frontend
+    stop_verified_pid "$listener_pid" 3000 frontend
+  fi
+done < <(port_pids 3000)
+
+if [[ -n "$frontend_pid" ]]; then
+  if verify_frontend; then
+    say "Reusing the verified V2 frontend on port 3000."
+  else
+    stop_verified_pid "$frontend_pid" 3000 frontend
     frontend_pid=""
   fi
 fi
@@ -210,9 +238,11 @@ if [[ -z "$frontend_pid" ]]; then
   STARTED_FRONTEND=$!
   wait_for "$WEB_URL" "Next.js startup" "$LOCAL_DIR/frontend.log" || exit 1
   FRONTEND_LISTENER="$(port_pid 3000)"
+  verify_frontend || fail "Frontend route verification failed for localhost and 127.0.0.1."
 fi
 
 say "Frontend: $WEB_URL"
+say "Also at:  http://localhost:3000"
 say "API:      $API_URL"
 say "Logs:     $LOCAL_DIR"
 say "Press Ctrl+C to stop services started by this command."
