@@ -24,14 +24,24 @@ Set `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in the r
 
 For scheduled reviewer uploads, the configured `GEMINI_API_KEY` also powers a content screen after OCR. Gemini checks whether the readable text is substantively an inspection report; it does not authenticate the report or verify that its claims are true. A clear mismatch, ambiguous content, or provider failure blocks the upload with a reason. If OCR cannot read the PDF, the reviewer can enter metadata manually and continue. The key stays in the backend `.env` and is never sent to the browser. Without a Gemini key, the app falls back to its basic OCR document-role check.
 
-Add a free-tier project key as `GEMINI_API_KEY` in the root `.env`. Before starting the backend, check generation and embeddings with `PYTHONPATH=backend python scripts/check_models.py`. Set `MIN_REQUEST_INTERVAL` according to the project's quota. Start the services in separate terminals.
+Add a free-tier project key as `GEMINI_API_KEY` in the root `.env`. Before starting the backend, check generation and embeddings with `PYTHONPATH=backend python scripts/check_models.py`. Set `MIN_REQUEST_INTERVAL` according to the project's quota.
+
+Start the complete local application from the repository root with one command:
+
+```bash
+./scripts/dev-local.sh
+```
+
+The launcher validates Node and Python, safely reuses private configuration and installed dependencies from another SafetyProof worktree when needed, verifies the API and hosted Supabase Auth, and starts only the missing services. It will replace a stale listener only after confirming that the process belongs to this SafetyProof repository. Logs are written to `.local/dev/` and remain untracked.
+
+For manual troubleshooting, the equivalent service commands are:
 
 ```bash
 PYTHONPATH=backend .venv/bin/uvicorn safetyproof.main:app --host 127.0.0.1 --port 8000
-npm --prefix frontend run dev
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm --prefix frontend run dev -- --webpack --hostname 127.0.0.1 --port 3000
 ```
 
-Open **http://localhost:3000**. This local UI and API write to the hosted Supabase project, so their changes are visible from Vercel and other devices. Restart FastAPI after editing environment variables. API documentation is available at **http://127.0.0.1:8000/docs**.
+Open **http://127.0.0.1:3000**. This local UI and API write to the hosted Supabase project, so their changes are visible from Vercel and other devices. Restart the launcher after editing environment variables. API documentation is available at **http://127.0.0.1:8000/docs**.
 
 ## How verification works
 

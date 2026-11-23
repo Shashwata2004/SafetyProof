@@ -184,16 +184,26 @@ export async function api<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   const multipart = typeof FormData !== "undefined" && body instanceof FormData;
-  const resp = await fetch(apiBase() + path, {
-    method,
-    signal,
-    headers: {
-      ...(token ? { Authorization: "Bearer " + token } : {}),
-      ...(body && !multipart ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body ? (multipart ? body : JSON.stringify(body)) : undefined,
-    cache: "no-store",
-  });
+  const base = apiBase();
+  let resp: Response;
+  try {
+    resp = await fetch(base + path, {
+      method,
+      signal,
+      headers: {
+        ...(token ? { Authorization: "Bearer " + token } : {}),
+        ...(body && !multipart ? { "Content-Type": "application/json" } : {}),
+      },
+      body: body ? (multipart ? body : JSON.stringify(body)) : undefined,
+      cache: "no-store",
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new Error(
+      `SafetyProof API could not be reached at ${base}. Run ./scripts/dev-local.sh and confirm the backend health check passes.`,
+      { cause: error },
+    );
+  }
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
     const detail = Array.isArray(data.detail)
