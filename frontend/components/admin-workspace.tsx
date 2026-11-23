@@ -100,14 +100,10 @@ function status(value: string) {
 
 export function AdminWorkspace({
   token,
-  signout,
   view,
-  changeView,
 }: {
   token: string;
-  signout: () => void;
   view: View;
-  changeView: (view: View) => void;
 }) {
   const cache = useQueryClient();
   const [add, setAdd] = useState(false);
@@ -170,6 +166,11 @@ export function AdminWorkspace({
     enabled: view !== "manager-applications",
     refetchInterval: 15_000,
   });
+  useEffect(() => {
+    setError("");
+    setSelected("");
+    setCaseId("");
+  }, [view]);
   useEffect(() => {
     if (
       view !== "manager-applications" ||
@@ -317,44 +318,13 @@ export function AdminWorkspace({
 
   return (
     <>
-      <header className="topbar">
-        <strong>SafetyProof AI · Admin</strong>
-        <button onClick={signout}>Sign out</button>
-      </header>
-      <main className="admin-content">
-        <nav className="tabs" aria-label="Admin pages">
-          {(
-            [
-              ["factories", "Factories"],
-              ["reviewers", "Reviewers"],
-              ["factory-assignments", "Factory assignments"],
-              ["scheduled-inspections", "Scheduled inspections"],
-              ["manager-applications", "Manager applications"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              className={view === id ? "sel" : ""}
-              key={id}
-              onClick={() => {
-                setError("");
-                setSelected("");
-                setCaseId("");
-                changeView(id);
-              }}
-            >
-              {label}
-              {id === "manager-applications" &&
-                (unseenManagerApplications.data?.count || 0) > 0 && (
-                  <span
-                    className="notification-dot"
-                    role="img"
-                    aria-label="New manager applications"
-                    title="New manager applications"
-                  />
-                )}
-            </button>
-          ))}
-        </nav>
+      <div className="admin-content unified-admin-content">
+        {view !== "manager-applications" &&
+          (unseenManagerApplications.data?.count || 0) > 0 && (
+            <p className="v2-workspace-notice" role="status">
+              New manager applications are waiting for review.
+            </p>
+          )}
         {error && !add && !deactivate && !addingFactory && (
           <ErrorNote text={error} />
         )}
@@ -822,7 +792,7 @@ export function AdminWorkspace({
             )}
           </>
         )}
-      </main>
+      </div>
       {caseId && (
         <Modal title="Case conditions" close={() => setCaseId("")}>
           {details.isLoading && <Busy />}

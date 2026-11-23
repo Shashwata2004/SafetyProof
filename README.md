@@ -32,7 +32,7 @@ Start the complete local application from the repository root with one command:
 ./scripts/dev-local.sh
 ```
 
-The launcher validates Node and Python, safely reuses private configuration and installed dependencies from another SafetyProof worktree when needed, verifies the API and hosted Supabase Auth, and starts only the missing services. It will replace a stale listener only after confirming that the process belongs to this SafetyProof repository. Logs are written to `.local/dev/` and remain untracked.
+The launcher validates Node and Python, safely reuses private configuration and installed dependencies from another SafetyProof worktree when needed, verifies the API and hosted Supabase Auth, and starts only the missing services. It inspects every IPv4 and IPv6 listener on port 3000, replaces stale SafetyProof frontends only after verifying their repository, and confirms that both localhost hostnames serve the V2 routes. Logs are written to `.local/dev/` and remain untracked.
 
 For manual troubleshooting, the equivalent service commands are:
 
@@ -41,7 +41,7 @@ PYTHONPATH=backend .venv/bin/uvicorn safetyproof.main:app --host 127.0.0.1 --por
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm --prefix frontend run dev -- --webpack --hostname 127.0.0.1 --port 3000
 ```
 
-Open **http://127.0.0.1:3000**. This local UI and API write to the hosted Supabase project, so their changes are visible from Vercel and other devices. Restart the launcher after editing environment variables. API documentation is available at **http://127.0.0.1:8000/docs**.
+Open **http://127.0.0.1:3000** or **http://localhost:3000**; both are verified against the same V2 frontend. This local UI and API write to the hosted Supabase project, so their changes are visible from Vercel and other devices. Restart the launcher after editing environment variables. API documentation is available at **http://127.0.0.1:8000/docs**.
 
 ## How verification works
 
