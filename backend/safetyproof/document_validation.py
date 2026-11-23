@@ -68,7 +68,7 @@ def _factory_missing_result(factory):
     }
 
 
-def _explicit_primary_role(pages, filename):
+def _explicit_primary_role(pages):
     patterns = {
         "inspection": re.compile(
             r"\b(?:safety\s+)?inspection\s+(?:report|review)\b", re.I
@@ -89,15 +89,15 @@ def _explicit_primary_role(pages, filename):
             r"\bmaintenance\s+(?:record|log|report)\b", re.I
         ),
     }
-    filename_text = re.sub(r"[-_]+", " ", filename or "")
-    for role, pattern in patterns.items():
-        if pattern.search(filename_text):
-            return role
     for page in pages[:1]:
         for line in page.get("text", "").splitlines()[:8]:
-            for role, pattern in patterns.items():
-                if pattern.search(line):
-                    return role
+            matches = [
+                (match.start(), role)
+                for role, pattern in patterns.items()
+                if (match := pattern.search(line))
+            ]
+            if matches:
+                return min(matches)[1]
     return None
 
 
@@ -200,7 +200,7 @@ async def check_factory_record_content(
             "content_indicators": [],
             "content_model": None,
         }
-    primary_role = _explicit_primary_role(pages, filename)
+    primary_role = _explicit_primary_role(pages)
     if primary_role and primary_role != expected_role:
         return _wrong_record_type_result(expected_role, primary_role)
     if not (
