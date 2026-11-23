@@ -1,12 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { SupabaseClient } from "@supabase/supabase-js";
+import { CheckCircle2 } from "lucide-react";
 import { api, apiBase, message } from "@/lib/api";
 import { ErrorNote, PasswordField } from "./ui";
 import { AccountMenu } from "./account-menu";
 import { ReviewerFields, reviewerDetails } from "./reviewer-fields";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { AuthShell } from "./v2/auth-shell";
 
 export type Factory = { id: string; name: string; address?: string };
 
@@ -161,27 +164,38 @@ export function RequestReviewerAccess() {
   }
 
   return (
-    <main className="entry-page">
-      <section className="panel entry-panel">
-        <h1>Request reviewer access</h1>
-        <AccountMenu current="reviewer-request" />
+    <AuthShell
+      contextDescription="Join a controlled workflow where every evidence finding remains connected to its source and professional review."
+      contextTitle="Independent review begins with trusted access."
+      description="Tell us who you represent. An administrator will review the request before access is granted."
+      eyebrow="Reviewer onboarding"
+      note="Submitting this form requests access only. It does not create an active reviewer account."
+      noteTitle="Approval required"
+      panelClassName="reviewer-access-panel"
+      title="Request reviewer access"
+    >
         {submitted ? (
-          <p role="status">
-            Your request is awaiting admin approval. If approved, ask the admin
-            for your one-time password setup link.
-          </p>
+          <div className="reviewer-access-success" role="status">
+            <CheckCircle2 aria-hidden="true" />
+            <div>
+              <strong>Request received</strong>
+              <p>Your request is awaiting admin approval. If approved, ask the admin for your one-time password setup link.</p>
+            </div>
+          </div>
         ) : (
-          <form method="post" onSubmit={submit}>
+          <form className="v2-access-form" method="post" onSubmit={submit}>
             <ReviewerFields />
             <input name="website" hidden tabIndex={-1} autoComplete="off" />
             {error && <ErrorNote text={error} />}
-            <button className="primary" disabled={busy}>
+            <button className="v2-button reviewer-access-submit" disabled={busy}>
               {busy ? "Submitting…" : "Send access request"}
             </button>
           </form>
         )}
-      </section>
-    </main>
+        <div className="login-registration reviewer-access-links">
+          <p>Already have access? <Link href="/login">Return to sign in</Link></p>
+        </div>
+    </AuthShell>
   );
 }
 

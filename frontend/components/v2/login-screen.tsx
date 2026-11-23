@@ -5,8 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import { api, message } from "@/lib/api";
-import { AnimatedGarmentFactory } from "./animated-garment-factory";
-import { ThemeToggle } from "./theme-toggle";
+import { AuthShell } from "./auth-shell";
 import { useAuth } from "./auth-provider";
 
 type Workspace = "reviewer" | "factory_manager";
@@ -53,28 +52,15 @@ export function LoginScreen() {
   }
 
   return (
-    <main className="v2-page login-page">
-      <div className="login-scene" aria-hidden="true">
-        <AnimatedGarmentFactory compact />
-      </div>
-      <div className="login-vignette" />
-      <header className="login-header v2-container">
-        <Link href="/" className="public-brand industrial-brand"><span><ShieldCheck /></span><strong>SafetyProof <em>AI</em></strong></Link>
-        <div><Link href="/">Public home</Link><ThemeToggle /></div>
-      </header>
-
-      <div className="login-layout v2-container">
-        <section className="login-context" aria-label="SafetyProof introduction">
-          <span className="industrial-kicker"><i /> Controlled evidence workspace</span>
-          <h1>Every finding should lead back to the source.</h1>
-          <p>Organize safety documents, inspect exact citations, and keep professional judgment at the center of every review.</p>
-          <div className="login-context-note"><ShieldCheck /><span><strong>Secure by role</strong>Factory, case and review access remains enforced by the SafetyProof backend.</span></div>
-        </section>
-
-        <section className="login-form-wrap login-glass-panel">
-          <span className="v2-eyebrow">Authorized access</span>
-          <h2>Sign in</h2>
-          <p>Continue with your existing SafetyProof account.</p>
+    <AuthShell
+      contextDescription="Organize safety documents, inspect exact citations, and keep professional judgment at the center of every review."
+      contextTitle="Every finding should lead back to the source."
+      description="Continue with your existing SafetyProof account."
+      eyebrow="Authorized access"
+      note="Factory, case and review access remains enforced by the SafetyProof backend."
+      noteTitle="Secure by role"
+      title="Sign in"
+    >
           {params.get("password") === "updated" && (
             <p className="v2-form-success" role="status">Your password is set. Sign in to continue.</p>
           )}
@@ -102,8 +88,6 @@ export function LoginScreen() {
             )}
           </div>
           <p className="login-security"><ShieldCheck /> Authentication and role permissions are verified by the SafetyProof backend.</p>
-        </section>
-      </div>
-    </main>
+    </AuthShell>
   );
 }
