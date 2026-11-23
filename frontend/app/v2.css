@@ -206,6 +206,22 @@ button, input, select, textarea { font: inherit; }
 .login-registration a { color: var(--sp-pink); font-weight: 750; }
 .login-security { margin-top: 24px !important; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .76rem !important; text-align: center; }
 .login-security svg { width: 15px; color: var(--sp-green); }
+.reviewer-access-panel { width: min(100%, 540px); }
+.v2-access-form { margin-top: 26px; display: grid; gap: 13px; }
+.v2-access-form > label { display: grid; gap: 7px; color: var(--sp-text); font-size: .84rem; font-weight: 740; }
+.v2-access-form input:not([type="hidden"]), .v2-access-form select { width: 100%; min-width: 0; min-height: 52px; padding: 0 14px; border: 1px solid var(--sp-line); border-radius: 14px; outline: 0; background: color-mix(in srgb, var(--sp-surface) 94%, transparent); color: var(--sp-text); }
+.v2-access-form input:focus, .v2-access-form select:focus { border-color: color-mix(in srgb, var(--sp-violet) 60%, var(--sp-line)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sp-violet) 10%, transparent); }
+.v2-access-form .email-domain-field { min-width: 0; padding-right: 12px; border: 1px solid var(--sp-line); border-radius: 14px; background: color-mix(in srgb, var(--sp-surface) 94%, transparent); }
+.v2-access-form .email-domain-field input { border: 0; background: transparent; }
+.v2-access-form .hint { margin: -3px 0 0; color: var(--sp-muted); font-size: .78rem; }
+.v2-access-form .error { margin: 0; border-color: color-mix(in srgb, var(--sp-red) 35%, var(--sp-line)); background: color-mix(in srgb, var(--sp-red) 9%, var(--sp-surface)); color: var(--sp-red); }
+.reviewer-access-submit { width: 100%; margin-top: 5px; }
+.reviewer-access-submit:disabled { cursor: wait; opacity: .58; }
+.reviewer-access-success { margin-top: 28px; padding: 20px; border: 1px solid color-mix(in srgb, var(--sp-green) 35%, var(--sp-line)); border-radius: 16px; background: color-mix(in srgb, var(--sp-green) 10%, var(--sp-surface)); display: flex; align-items: flex-start; gap: 13px; }
+.reviewer-access-success > svg { width: 23px; flex: 0 0 auto; color: var(--sp-green); }
+.reviewer-access-success strong { color: var(--sp-text); }
+.reviewer-access-success p { margin: 5px 0 0; color: var(--sp-muted); font-size: .9rem; line-height: 1.55; }
+.reviewer-access-links { margin-top: 22px; }
 
 @media (max-width: 900px) {
   .login-layout { grid-template-columns: 1fr; gap: 26px; align-items: end; }
@@ -222,6 +238,9 @@ button, input, select, textarea { font: inherit; }
   .login-form-wrap h2 { font-size: 2.7rem; }
   .workspace-tabs { margin-top: 23px; }
   .workspace-tabs button { font-size: .76rem; }
+  .reviewer-access-panel { width: 100%; }
+  .v2-access-form .email-domain-field { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0; }
+  .v2-access-form .email-domain-suffix { padding: 0 14px 11px; overflow-wrap: anywhere; }
 }
 
 .dashboard-loading { display: grid; place-content: center; justify-items: center; gap: 15px; color: var(--sp-muted); text-align: center; }
