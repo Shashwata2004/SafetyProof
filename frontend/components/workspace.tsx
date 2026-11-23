@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient, Session, SupabaseClient } from "@supabase/supabase-js";
+import { Session, SupabaseClient } from "@supabase/supabase-js";
 import {
   QueryClient,
   QueryClientProvider,
@@ -48,19 +48,20 @@ import { AccountMenu } from "./account-menu";
 import { CorrectiveWork } from "./corrective-work";
 import { sampleCatalog } from "@/lib/samples";
 import type { components } from "@/lib/schema";
+import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 });
-export function Workspace() {
+export function Workspace({ basePath = "/workspace" }: { basePath?: string }) {
   return (
     <QueryClientProvider client={qc}>
-      <App />
+      <App basePath={basePath} />
     </QueryClientProvider>
   );
 }
 
-function App() {
+function App({ basePath }: { basePath: string }) {
   const router = useRouter(),
     params = useSearchParams(),
     cache = useQueryClient();
@@ -81,10 +82,7 @@ function App() {
       if (!config.isLoading) setRestoring(false);
       return;
     }
-    const client = createClient(
-      config.data.supabase_url,
-      config.data.publishable_key,
-    );
+    const client = getSupabaseBrowserClient(config.data);
     setAuth(client);
     const { data } = client.auth.onAuthStateChange((_event, s) => {
       setSession(s);
@@ -92,6 +90,9 @@ function App() {
     });
     return () => data.subscription.unsubscribe();
   }, [config.data, config.isLoading]);
+  useEffect(() => {
+    if (!restoring && !config.isLoading && !session) router.replace("/login");
+  }, [config.isLoading, restoring, router, session]);
   const token = session?.access_token;
   const identity = useQuery({
     queryKey: ["identity", token],
@@ -168,7 +169,7 @@ function App() {
     if (v !== "cases") p.set("view", v);
     if (run) p.set("run", run);
     if (item) p.set("item", item);
-    router.push("/" + (p.size ? "?" + p : ""));
+    router.push(basePath + (p.size ? "?" + p : ""));
     setMobile(false);
   }
   async function refresh() {
@@ -180,7 +181,7 @@ function App() {
       predicate: (q) => !["config"].includes(String(q.queryKey[0])),
     });
     setDialog(null);
-    go("cases");
+    router.replace("/login");
   }
   const sample = sampleCatalog;
   const current = token && cid ? dossier.data : undefined;
@@ -199,6 +200,13 @@ function App() {
       </main>
     );
   if (!session || identity.isError) {
+    if (!session && !identity.isError) {
+      return (
+        <main className="boot">
+          <Busy />
+        </main>
+      );
+    }
     const signIn =
       params.get("sign-in") === "factory-manager"
         ? "factory_manager"

@@ -1,11 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { SupabaseClient } from "@supabase/supabase-js";
 import { api, apiBase, message } from "@/lib/api";
 import { ErrorNote, PasswordField } from "./ui";
 import { AccountMenu } from "./account-menu";
 import { ReviewerFields, reviewerDetails } from "./reviewer-fields";
+import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 export type Factory = { id: string; name: string; address?: string };
 
@@ -75,7 +76,7 @@ export function SetPassword() {
         supabase_url: string;
         publishable_key: string;
       }>("/v1/config");
-      auth = createClient(config.supabase_url, config.publishable_key);
+      auth = getSupabaseBrowserClient(config);
       await api("/v1/invites/set-password", undefined, "POST", {
         token,
         password,
@@ -91,12 +92,12 @@ export function SetPassword() {
       });
       const { error } = await auth.auth.setSession(session);
       if (error) throw error;
-      window.location.replace("/");
+      window.location.replace("/dashboard");
     } catch (error) {
       if (passwordSaved) {
         await auth?.auth.signOut().catch(() => undefined);
         window.location.replace(
-          `/?password=updated&email=${encodeURIComponent(email)}`,
+          `/login?password=updated&email=${encodeURIComponent(email)}`,
         );
         return;
       }
@@ -130,7 +131,7 @@ export function SetPassword() {
           </form>
         )}
         {error && <ErrorNote text={error} />}
-        <a href="/">Back to sign in</a>
+        <a href="/login">Back to sign in</a>
       </section>
     </main>
   );

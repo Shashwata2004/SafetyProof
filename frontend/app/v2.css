@@ -159,6 +159,7 @@ button, input, select, textarea { font: inherit; }
 .login-submit { width: 100%; margin-top: 14px; }
 .login-submit:disabled { opacity: .55; cursor: wait; }
 .v2-form-error { padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--sp-red) 35%, var(--sp-line)); border-radius: 12px; background: color-mix(in srgb, var(--sp-red) 8%, var(--sp-surface)); color: var(--sp-red) !important; font-size: .86rem; }
+.v2-form-success { color: var(--sp-green); font-weight: 700; }
 .login-registration { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--sp-line); text-align: center; }
 .login-registration p { color: var(--sp-muted); font-size: .9rem; }
 .login-registration a { color: var(--sp-pink); font-weight: 750; }

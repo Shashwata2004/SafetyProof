@@ -68,6 +68,9 @@ export function LoginScreen() {
           <span className="v2-eyebrow">Secure workspace</span>
           <h2>Welcome back</h2>
           <p>Sign in with your existing authorized account.</p>
+          {params.get("password") === "updated" && (
+            <p className="v2-form-success" role="status">Your password is set. Sign in to continue.</p>
+          )}
 
           <div className="workspace-tabs" role="tablist" aria-label="Choose account workspace">
             <button type="button" role="tab" aria-selected={workspace === "reviewer"} onClick={() => setWorkspace("reviewer")}>Reviewer / Admin</button>
