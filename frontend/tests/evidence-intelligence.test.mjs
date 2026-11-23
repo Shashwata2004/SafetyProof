@@ -3,37 +3,18 @@ import test from "node:test";
 import {
   authorizedFactories,
   evidenceStatusCounts,
-  exactEvidenceZone,
-  groupEvidenceByZone,
   officialEvidenceStatus,
-} from "../components/design-preview/evidence-intelligence.ts";
+} from "../lib/evidence-intelligence.ts";
 
-function result(outcome, location) {
+function result(outcome) {
   return {
-    id: `${outcome}-${location ?? "none"}`,
+    id: outcome,
     outcome,
-    claim: { location },
+    claim: {},
     evidence: [],
     reviews: [],
   };
 }
-
-test("only exact explicit locations map to factory zones", () => {
-  assert.equal(exactEvidenceZone(result("supported", "Sewing Line")), "sewing");
-  assert.equal(exactEvidenceZone(result("supported", "Packing & Dispatch")), "packing");
-  assert.equal(exactEvidenceZone(result("supported", "near the sewing line")), null);
-  assert.equal(exactEvidenceZone(result("supported", null)), null);
-});
-
-test("missing and ambiguous locations remain unassigned", () => {
-  const grouped = groupEvidenceByZone([
-    result("supported", "Quality Control"),
-    result("unsupported", "production floor"),
-    result("unresolved", undefined),
-  ]);
-  assert.equal(grouped.byZone.quality.length, 1);
-  assert.equal(grouped.unassigned.length, 2);
-});
 
 test("backend outcomes use only authoritative evidence categories", () => {
   assert.equal(officialEvidenceStatus("supported"), "Supported");
@@ -46,9 +27,9 @@ test("backend outcomes use only authoritative evidence categories", () => {
 
 test("status counts exclude outcomes without an official mapping", () => {
   const summary = evidenceStatusCounts([
-    result("supported", "Sewing"),
-    result("unsupported", "Cutting"),
-    result("needs_review", "Finishing"),
+    result("supported"),
+    result("unsupported"),
+    result("needs_review"),
   ]);
   assert.equal(summary.counts.Supported, 1);
   assert.equal(summary.counts["Insufficient Evidence"], 1);

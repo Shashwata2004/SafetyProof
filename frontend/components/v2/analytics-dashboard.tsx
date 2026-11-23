@@ -26,8 +26,8 @@ import {
   evidenceStatusCounts,
   officialEvidenceStatus,
   officialStatusColors,
-} from "@/components/design-preview/evidence-intelligence";
-import { useEvidenceIntelligence } from "@/components/design-preview/use-evidence-intelligence";
+} from "@/lib/evidence-intelligence";
+import { useEvidenceIntelligence } from "./use-evidence-intelligence";
 import { useAuth } from "./auth-provider";
 import { ThemeToggle } from "./theme-toggle";
 

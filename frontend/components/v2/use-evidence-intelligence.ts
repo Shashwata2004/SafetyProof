@@ -9,7 +9,7 @@ import {
   casesForFactory,
   latestReadableRun,
   type EvidenceResult,
-} from "./evidence-intelligence";
+} from "@/lib/evidence-intelligence";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 type AccountState = "restoring" | "signed-out" | "loading" | "ready" | "error";
@@ -72,12 +72,12 @@ export function useEvidenceIntelligence() {
     setAccountState("loading");
     setError("");
     void api<components["schemas"]["AccountProfile"]>(
-        "/v1/me",
-        token,
-        "GET",
-        undefined,
-        controller.signal,
-      )
+      "/v1/me",
+      token,
+      "GET",
+      undefined,
+      controller.signal,
+    )
       .then(async (nextProfile) => {
         const nextCases = nextProfile.role === "admin"
           ? []

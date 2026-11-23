@@ -1,5 +1,4 @@
-import type { Case, Dossier, Outcome, Result, Run } from "@/lib/api";
-import type { ZoneId } from "./demo-data";
+import type { Case, Dossier, Outcome, Result, Run } from "./api";
 
 export type OfficialEvidenceStatus =
   | "Supported"
@@ -22,28 +21,6 @@ export const officialStatusColors: Record<OfficialEvidenceStatus, string> = {
   "Insufficient Evidence": "#8b9bb4",
 };
 
-const locationAliases = new Map<string, ZoneId>([
-  ["fabric storage", "storage"],
-  ["cutting", "cutting"],
-  ["fabric cutting", "cutting"],
-  ["sewing", "sewing"],
-  ["sewing line", "sewing"],
-  ["finishing", "finishing"],
-  ["quality control", "quality"],
-  ["quality check", "quality"],
-  ["packing", "packing"],
-  ["packing and dispatch", "packing"],
-]);
-
-function normalizedLabel(value: string) {
-  return value
-    .normalize("NFKC")
-    .trim()
-    .toLocaleLowerCase("en")
-    .replace(/\s*&\s*/gu, " and ")
-    .replace(/\s+/gu, " ");
-}
-
 export function officialEvidenceStatus(
   outcome: Outcome,
 ): OfficialEvidenceStatus | null {
@@ -59,30 +36,6 @@ export function officialEvidenceStatus(
     default:
       return null;
   }
-}
-
-export function exactEvidenceZone(result: EvidenceResult): ZoneId | null {
-  const location = result.claim.location;
-  if (typeof location !== "string" || !location.trim()) return null;
-  return locationAliases.get(normalizedLabel(location)) ?? null;
-}
-
-export function groupEvidenceByZone(results: EvidenceResult[]) {
-  const byZone: Record<ZoneId, EvidenceResult[]> = {
-    storage: [],
-    cutting: [],
-    sewing: [],
-    finishing: [],
-    quality: [],
-    packing: [],
-  };
-  const unassigned: EvidenceResult[] = [];
-  for (const result of results) {
-    const zone = exactEvidenceZone(result);
-    if (zone) byZone[zone].push(result);
-    else unassigned.push(result);
-  }
-  return { byZone, unassigned };
 }
 
 export function evidenceStatusCounts(results: EvidenceResult[]) {
