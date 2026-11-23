@@ -44,12 +44,12 @@ export function PublicHome() {
         </header>
 
         <div className="industrial-hero-content v2-container">
-          <aside className="industrial-status-panel">
+          <aside className="industrial-status-panel hero-panel-enter hero-panel-enter-left">
             <span>System purpose</span>
             <strong>Documentary evidence review</strong>
             <p>AI assistance supports review. It does not replace professional inspection or certify factory safety.</p>
           </aside>
-          <div className="industrial-hero-panel">
+          <div className="industrial-hero-panel hero-panel-enter hero-panel-enter-right">
             <span className="industrial-kicker"><i /> Evidence operations platform</span>
             <h1>Turn safety documents into verifiable evidence.</h1>
             <p>SafetyProof AI connects workplace-safety findings to exact documentary sources, giving garment factories and professional reviewers one controlled evidence workspace.</p>

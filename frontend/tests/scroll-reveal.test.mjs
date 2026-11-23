@@ -25,3 +25,11 @@ test("reveals respect reduced motion and keep a no-script fallback", () => {
   assert.match(home, /<noscript>/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[^{]*\{[^}]*\.scroll-reveal/s);
 });
+
+test("reveals use deliberate timing and hero panels enter from opposite sides", () => {
+  assert.match(css, /\.scroll-reveal \{[^}]*1\.3s cubic-bezier/s);
+  assert.match(css, /nth-child\(2\) \{ transition-delay: 180ms;/);
+  assert.match(home, /industrial-status-panel hero-panel-enter hero-panel-enter-left/);
+  assert.match(home, /industrial-hero-panel hero-panel-enter hero-panel-enter-right/);
+  assert.match(css, /\.auth-panel-enter \{[^}]*1\.25s/s);
+});
