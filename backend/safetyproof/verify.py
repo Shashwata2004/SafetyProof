@@ -412,10 +412,10 @@ async def run_verification(db, ai, job, run, step):
         "cases", job["case_id"], fields="period_start,period_end"
     )
     versions = {v["id"]: v for v in manifest}
-    query = {
-        "case_id": "eq." + job["case_id"],
-        "version_id": "in.(" + ",".join(versions) + ")",
-    }
+    # Version IDs are globally unique. A follow-up run may include versions
+    # from earlier cases in the same inspection series, so filtering these
+    # source rows by the current case would silently drop their evidence.
+    query = {"version_id": "in.(" + ",".join(versions) + ")"}
     pages = {p["id"]: p for p in await db.rows("pages", filters=query)}
     chunks = await db.rows(
         "chunks",

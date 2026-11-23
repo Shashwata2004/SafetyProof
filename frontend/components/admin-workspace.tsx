@@ -1,12 +1,165 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { CalendarDays } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiBase, dateText, message, outcomes } from "@/lib/api";
 import type { Outcome } from "@/lib/api";
 import type { Factory } from "./onboarding";
 import { Busy, ErrorNote, Modal, Tag } from "./ui";
 import { ReviewerFields, reviewerDetails } from "./reviewer-fields";
+
+function isoDay(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseIsoDay(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function nextIsoDay(value: string) {
+  const date = parseIsoDay(value);
+  date.setDate(date.getDate() + 1);
+  return isoDay(date);
+}
+
+function FollowUpCalendar({
+  value,
+  minDate,
+  blockedDates,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  minDate: string;
+  blockedDates: Set<string>;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const minimum = parseIsoDay(minDate);
+  const [month, setMonth] = useState(
+    () => new Date(minimum.getFullYear(), minimum.getMonth(), 1),
+  );
+  const [calendarVisible, setCalendarVisible] = useState(true);
+  const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
+  const firstWeekday = monthStart.getDay();
+  const daysInMonth = new Date(
+    month.getFullYear(),
+    month.getMonth() + 1,
+    0,
+  ).getDate();
+  const previousMonth = new Date(month.getFullYear(), month.getMonth() - 1, 1);
+  const canGoBack =
+    previousMonth.getFullYear() > minimum.getFullYear() ||
+    (previousMonth.getFullYear() === minimum.getFullYear() &&
+      previousMonth.getMonth() >= minimum.getMonth());
+
+  return (
+    <div className="follow-up-date-picker">
+      <label>
+        Follow-up inspection date
+        <div className="follow-up-date-value">
+          <input
+            type="text"
+            readOnly
+            value={value ? dateText(value) : ""}
+            placeholder="Choose a date from the calendar"
+            aria-label="Selected follow-up inspection date"
+            disabled={disabled}
+          />
+          <button
+            type="button"
+            aria-expanded={calendarVisible}
+            aria-label={`${calendarVisible ? "Hide" : "Show"} calendar`}
+            disabled={disabled}
+            onClick={() => setCalendarVisible((visible) => !visible)}
+          >
+            <CalendarDays size={18} aria-hidden />
+          </button>
+        </div>
+      </label>
+      {calendarVisible && (
+        <div className="follow-up-calendar" aria-label="Choose inspection date">
+          <div className="follow-up-calendar-head">
+            <button
+              type="button"
+              aria-label="Previous month"
+              disabled={disabled || !canGoBack}
+              onClick={() => setMonth(previousMonth)}
+            >
+              ‹
+            </button>
+            <strong>
+              {month.toLocaleDateString(undefined, {
+                month: "long",
+                year: "numeric",
+              })}
+            </strong>
+            <button
+              type="button"
+              aria-label="Next month"
+              disabled={disabled}
+              onClick={() =>
+                setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))
+              }
+            >
+              ›
+            </button>
+          </div>
+          <div className="follow-up-calendar-grid" role="grid">
+            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+              <span className="follow-up-calendar-weekday" key={day}>
+                {day}
+              </span>
+            ))}
+            {Array.from({ length: firstWeekday }, (_, index) => (
+              <span className="follow-up-calendar-empty" key={`empty-${index}`} />
+            ))}
+            {Array.from({ length: daysInMonth }, (_, index) => {
+              const day = index + 1;
+              const date = new Date(month.getFullYear(), month.getMonth(), day);
+              const iso = isoDay(date);
+              const beforeMinimum = iso < minDate;
+              const alreadyAssigned = blockedDates.has(iso);
+              const selected = value === iso;
+              return (
+                <button
+                  className={selected ? "selected" : undefined}
+                  type="button"
+                  role="gridcell"
+                  key={iso}
+                  disabled={disabled || beforeMinimum || alreadyAssigned}
+                  aria-pressed={selected}
+                  aria-label={`${date.toLocaleDateString(undefined, {
+                    dateStyle: "full",
+                  })}${alreadyAssigned ? ", reviewer already assigned" : ""}`}
+                  title={
+                    beforeMinimum
+                      ? "A follow-up must be after the earlier inspection."
+                      : alreadyAssigned
+                        ? "This reviewer already has an inspection on this date."
+                        : undefined
+                  }
+                  onClick={() => onChange(iso)}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+          <p className="follow-up-calendar-note">
+            Dates before the previous inspection and dates already assigned to
+            this reviewer are unavailable.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type Reviewer = {
   id: string;
@@ -81,6 +234,11 @@ type ScheduledInspection = {
   id: string;
   title: string;
   factory: string;
+  reviewer_id: string | null;
+  inspection_kind?: "initial" | "follow_up";
+  follow_up_of?: string | null;
+  follow_up_root_id?: string | null;
+  follow_up_number?: number;
   programme: string | null;
   inspection_on: string;
   reviewer_name: string | null;
@@ -112,8 +270,16 @@ export function AdminWorkspace({
   const [factoryAddress, setFactoryAddress] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [assignmentFactoryId, setAssignmentFactoryId] = useState("");
+  const [inspectionKind, setInspectionKind] = useState<
+    "initial" | "follow_up"
+  >("initial");
+  const [followUpOf, setFollowUpOf] = useState("");
   const [caseFormKey, setCaseFormKey] = useState(0);
   const [caseCreated, setCaseCreated] = useState(false);
+  const [followUpTarget, setFollowUpTarget] =
+    useState<ScheduledInspection | null>(null);
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [followUpRequestSent, setFollowUpRequestSent] = useState("");
   const [notificationMessage, setNotificationMessage] = useState("");
   const [selected, setSelected] = useState("");
   const [caseId, setCaseId] = useState("");
@@ -148,7 +314,14 @@ export function AdminWorkspace({
     queryKey: ["admin-scheduled-inspections", token],
     queryFn: () =>
       api<ScheduledInspection[]>("/v1/admin/scheduled-inspections", token),
-    enabled: view === "scheduled-inspections",
+    enabled: view === "scheduled-inspections" || view === "factory-assignments",
+  });
+  const followUpSupport = useQuery({
+    queryKey: ["admin-follow-up-support", token],
+    queryFn: () =>
+      api<{ enabled: boolean }>("/v1/admin/follow-up-support", token),
+    enabled: view === "factory-assignments" || view === "scheduled-inspections",
+    retry: false,
   });
   const managers = useQuery({
     queryKey: ["admin-applications", token],
@@ -213,6 +386,34 @@ export function AdminWorkspace({
   const assignmentFactory = factories.data?.find(
     (row) => row.id === assignmentFactoryId,
   );
+  const eligibleFollowUps = (scheduledInspections.data || []).filter(
+    (item) =>
+      item.factory === assignmentFactory?.name &&
+      item.report_status === "complete" &&
+      !(scheduledInspections.data || []).some(
+        (later) => later.follow_up_of === item.id,
+      ),
+  );
+  const selectedPreviousInspection = eligibleFollowUps.find(
+    (item) => item.id === followUpOf,
+  );
+  const followUpEnabled = followUpSupport.data?.enabled === true;
+  const followUpNumber = selectedPreviousInspection
+    ? Math.max(
+        0,
+        ...(scheduledInspections.data || [])
+          .filter(
+            (item) =>
+              item.follow_up_root_id ===
+              selectedPreviousInspection.follow_up_root_id,
+          )
+          .map((item) => item.follow_up_number ?? 0),
+      ) + 1
+    : 1;
+  const generatedFollowUpTitle =
+    followUpNumber === 1
+      ? "Follow-up Inspection"
+      : `Follow-up Inspection ${followUpNumber}`;
   const names = new Map(factories.data?.map((f) => [f.id, f.name]));
 
   async function perform(action: () => Promise<void>) {
@@ -285,6 +486,7 @@ export function AdminWorkspace({
     await perform(async () => {
       const created = await api<{
         id: string;
+        title: string;
         manager_notified_at: string | null;
       }>(
         "/v1/admin/cases",
@@ -299,11 +501,70 @@ export function AdminWorkspace({
       );
       setCaseCreated(true);
       setNotificationMessage(
-        created.manager_notified_at
-          ? "Inspection assigned. The factory manager has been notified."
-          : "Inspection assigned. No active factory manager was available to notify.",
+        `${created.title} assigned${
+          inspectionKind === "follow_up"
+            ? `; ${assignee.full_name} can access the earlier inspection files`
+            : ""
+        }. ${
+          created.manager_notified_at
+            ? "The factory manager has been notified."
+            : "No active factory manager was available to notify."
+        }`,
       );
       await factories.refetch();
+      await scheduledInspections.refetch();
+    });
+  }
+
+  async function requestFollowUp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const previous = followUpTarget;
+    if (!previous?.reviewer_id || !followUpDate) return;
+    const earliestDate = nextIsoDay(previous.inspection_on);
+    if (followUpDate < earliestDate) {
+      setError("Choose a date after the previous inspection.");
+      return;
+    }
+    const dateAlreadyAssigned = (scheduledInspections.data || []).some(
+      (item) =>
+        item.id !== previous.id &&
+        item.reviewer_id === previous.reviewer_id &&
+        item.inspection_on === followUpDate,
+    );
+    if (dateAlreadyAssigned) {
+      setError("This inspector already has an inspection on that date.");
+      return;
+    }
+    const previousReviewer = reviewers.data?.find(
+      (row) => row.id === previous.reviewer_id && row.status === "active",
+    );
+    if (!previousReviewer) {
+      setError(
+        "The previous inspector is no longer active. Assign this follow-up from Factory assignments.",
+      );
+      return;
+    }
+    await perform(async () => {
+      const created = await api<{ title: string }>(
+        "/v1/admin/cases",
+        token,
+        "POST",
+        {
+          title: "Follow-up Inspection",
+          factory: previous.factory,
+          programme: previous.programme,
+          reviewer_id: previousReviewer.id,
+          inspection_on: followUpDate,
+          inspection_kind: "follow_up",
+          follow_up_of: previous.id,
+        },
+      );
+      setFollowUpRequestSent(
+        `${created.title} assigned to ${previousReviewer.full_name}. The inspector can access the earlier inspection files.`,
+      );
+      setFollowUpTarget(null);
+      setFollowUpDate("");
+      await scheduledInspections.refetch();
     });
   }
 
@@ -312,6 +573,8 @@ export function AdminWorkspace({
     setCaseCreated(false);
     setAssignmentFactoryId("");
     setAssigneeId("");
+    setInspectionKind("initial");
+    setFollowUpOf("");
     setNotificationMessage("");
     setError("");
   }
@@ -566,6 +829,9 @@ export function AdminWorkspace({
               {reviewers.isLoading && <Busy />}
               {reviewers.error && <ErrorNote text={message(reviewers.error)} />}
               {factories.error && <ErrorNote text={message(factories.error)} />}
+              {scheduledInspections.error && (
+                <ErrorNote text={message(scheduledInspections.error)} />
+              )}
               <label>
                 Factory
                 <select
@@ -574,6 +840,7 @@ export function AdminWorkspace({
                   onChange={(event) => {
                     setAssignmentFactoryId(event.target.value);
                     setAssigneeId("");
+                    setFollowUpOf("");
                     setError("");
                   }}
                 >
@@ -614,6 +881,80 @@ export function AdminWorkspace({
               {!reviewers.isLoading &&
                 !reviewers.error &&
                 !assignees.length && <p>No active reviewers available.</p>}
+              <label>
+                Inspection type
+                <select
+                  value={inspectionKind}
+                  disabled={busy || caseCreated}
+                  onChange={(event) => {
+                    setInspectionKind(
+                      event.target.value as "initial" | "follow_up",
+                    );
+                    setFollowUpOf("");
+                    setError("");
+                  }}
+                >
+                  <option value="initial">Initial inspection</option>
+                  <option
+                    value="follow_up"
+                    disabled={!followUpEnabled || !eligibleFollowUps.length}
+                  >
+                    Follow-up inspection
+                  </option>
+                </select>
+              </label>
+              {!followUpEnabled && (
+                <p className="hint">
+                  Follow-up scheduling will be available after the database
+                  migration and API restart. Initial inspections remain available.
+                </p>
+              )}
+              {followUpEnabled &&
+                assignmentFactory &&
+                !eligibleFollowUps.length && (
+                  <p className="hint">
+                    Follow-up is available after this factory has a published
+                    initial inspection.
+                  </p>
+                )}
+              {inspectionKind === "follow_up" && followUpEnabled && (
+                <>
+                  <input
+                    type="hidden"
+                    name="inspection_kind"
+                    value="follow_up"
+                  />
+                  <label>
+                    Continue an earlier inspection
+                    <select
+                      name="follow_up_of"
+                      required
+                      value={followUpOf}
+                      disabled={busy || caseCreated || !assignmentFactory}
+                      onChange={(event) => setFollowUpOf(event.target.value)}
+                    >
+                      <option value="">Choose a published inspection</option>
+                      {eligibleFollowUps.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.title} · {dateText(item.inspection_on)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {!eligibleFollowUps.length && assignmentFactory && (
+                    <p className="hint">
+                      No published earlier inspection is available for this factory.
+                    </p>
+                  )}
+                  {selectedPreviousInspection && (
+                    <p className="hint">
+                      The new reviewer will get access to the files from this
+                      inspection and all earlier inspections in its series. This
+                      visit will be called {generatedFollowUpTitle}.
+                    </p>
+                  )}
+                </>
+              )}
               {assignmentFactory && assignee && (
                 <p>
                   Assigning this inspection will give {assignee.full_name} access
@@ -621,15 +962,19 @@ export function AdminWorkspace({
                 </p>
               )}
               <h2>Schedule inspection</h2>
-              <label>
-                Case title
-                <input
-                  name="title"
-                  maxLength={160}
-                  required
-                  placeholder="e.g. April safety review"
-                />
-              </label>
+              {inspectionKind === "initial" ? (
+                <label>
+                  Case title
+                  <input
+                    name="title"
+                    maxLength={160}
+                    required
+                    placeholder="e.g. April safety review"
+                  />
+                </label>
+              ) : (
+                <input type="hidden" name="title" value={generatedFollowUpTitle} />
+              )}
               <label>
                 Inspection programme <small>Optional</small>
                 <input name="programme" maxLength={120} />
@@ -651,7 +996,14 @@ export function AdminWorkspace({
               <div className="form-actions">
                 <button
                   className="primary"
-                  disabled={busy || caseCreated || !assignmentFactory || !assignee}
+                  disabled={
+                    busy ||
+                    caseCreated ||
+                    !assignmentFactory ||
+                    !assignee ||
+                    (inspectionKind === "follow_up" &&
+                      (!followUpEnabled || !followUpOf))
+                  }
                 >
                   {busy ? "Assigning…" : "Assign case"}
                 </button>
@@ -679,13 +1031,22 @@ export function AdminWorkspace({
             {scheduledInspections.error && (
               <ErrorNote text={message(scheduledInspections.error)} />
             )}
+            {followUpRequestSent && (
+              <p className="panel-pad" role="status">
+                {followUpRequestSent}
+              </p>
+            )}
             {scheduledInspections.data?.length === 0 && (
               <p className="panel-pad">No inspections scheduled yet.</p>
             )}
             {scheduledInspections.data?.map((item) => (
               <div className="admin-row" key={item.id}>
                 <div>
-                  <strong>{item.title}</strong>
+                  <strong>
+                    {item.inspection_kind === "follow_up"
+                      ? item.title
+                      : `Initial Inspection · ${item.title}`}
+                  </strong>
                   <small>
                     {item.factory} · {dateText(item.inspection_on)}
                   </small>
@@ -720,6 +1081,27 @@ export function AdminWorkspace({
                       ? "Manager notified"
                       : "No manager notified"}
                   </Tag>
+                  {followUpSupport.data?.enabled &&
+                    item.report_status === "complete" &&
+                    item.reviewer_id &&
+                    reviewers.data?.some(
+                      (row) =>
+                        row.id === item.reviewer_id && row.status === "active",
+                    ) &&
+                    !(scheduledInspections.data || []).some(
+                      (later) => later.follow_up_of === item.id,
+                    ) && (
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          setError("");
+                          setFollowUpDate("");
+                          setFollowUpTarget(item);
+                        }}
+                      >
+                        Request follow-up
+                      </button>
+                    )}
                   <button onClick={() => setCaseId(item.id)}>View case</button>
                 </div>
               </div>
@@ -851,6 +1233,65 @@ export function AdminWorkspace({
               )}
             </div>
           )}
+        </Modal>
+      )}
+      {followUpTarget && (
+        <Modal
+          title="Request follow-up inspection"
+          close={() => {
+            if (!busy) {
+              setFollowUpTarget(null);
+              setFollowUpDate("");
+            }
+          }}
+        >
+          <form className="admin-form" onSubmit={requestFollowUp}>
+            <p>
+              This creates the follow-up inspection and assigns it directly to
+              the previous inspector, {reviewers.data?.find(
+                (row) => row.id === followUpTarget.reviewer_id,
+              )?.full_name || ""}. They will have access to all earlier
+              inspection files in this series.
+            </p>
+            <p>
+              Factory: {followUpTarget.factory} · Previous inspection:{" "}
+              {followUpTarget.title}
+            </p>
+            <FollowUpCalendar
+              value={followUpDate}
+              minDate={nextIsoDay(followUpTarget.inspection_on)}
+              blockedDates={new Set(
+                (scheduledInspections.data || [])
+                  .filter(
+                    (item) =>
+                      item.id !== followUpTarget.id &&
+                      item.reviewer_id === followUpTarget.reviewer_id,
+                  )
+                  .map((item) => item.inspection_on),
+              )}
+              disabled={busy}
+              onChange={(value) => {
+                setError("");
+                setFollowUpDate(value);
+              }}
+            />
+            {error && <ErrorNote text={error} />}
+            <div className="form-actions">
+              <button className="primary" disabled={busy || !followUpDate}>
+                {busy ? "Sending request…" : "Send to previous inspector"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setFollowUpTarget(null);
+                  setFollowUpDate("");
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
       {add && (

@@ -109,6 +109,8 @@ class FactoryInput(BaseModel):
 class AssignedCaseInput(CaseInput):
     reviewer_id: UUID
     inspection_on: date | None = None
+    inspection_kind: Literal["initial", "follow_up"] = "initial"
+    follow_up_of: UUID | None = None
 
     @model_validator(mode="after")
     def inspection_period(self):
@@ -952,6 +954,27 @@ def account_router(user, db_dep):
     async def create_assigned_case(
         body: AssignedCaseInput, u=Depends(admin), db=Depends(db_dep)
     ):
+        if body.inspection_kind == "follow_up":
+            if not body.follow_up_of:
+                raise HTTPException(
+                    422, "Choose the earlier inspection this follow-up continues."
+                )
+            previous = await db.one(
+                "cases",
+                body.follow_up_of,
+                fields="factory,inspection_on",
+            )
+            if previous["factory"] != body.factory or not previous["inspection_on"]:
+                raise HTTPException(
+                    422,
+                    "Choose an earlier scheduled inspection for the same factory.",
+                )
+            previous_date = date.fromisoformat(previous["inspection_on"])
+            if body.inspection_on is None or body.inspection_on <= previous_date:
+                raise HTTPException(
+                    422,
+                    "The follow-up inspection date must be after the previous inspection date.",
+                )
         return await db.rpc(
             "create_case",
             actor_id=u.id,
@@ -966,7 +989,7 @@ def account_router(user, db_dep):
         case = await db.one(
             "cases",
             cid,
-            fields="id,title,factory,period_start,period_end,archived,deleting,reviewer_id,inspection_on",
+            fields="id,title,factory,period_start,period_end,archived,deleting,reviewer_id,inspection_on,inspection_kind,follow_up_of,follow_up_root_id,follow_up_number",
         )
         if case.pop("deleting"):
             raise HTTPException(404, "Case unavailable.")
@@ -1012,18 +1035,46 @@ def account_router(user, db_dep):
     async def factory_overview(u=Depends(admin), db=Depends(db_dep)):
         return await db.rpc("factory_overview")
 
+    @router.get("/admin/follow-up-support")
+    async def follow_up_support(u=Depends(admin), db=Depends(db_dep)):
+        try:
+            await db.rows(
+                "cases",
+                fields="id,inspection_kind,follow_up_of,follow_up_root_id,follow_up_number",
+                filters={"id": "eq.00000000-0000-0000-0000-000000000000"},
+            )
+        except PlatformError:
+            return {"enabled": False}
+        return {"enabled": True}
+
     @router.get("/admin/scheduled-inspections")
     async def scheduled_inspections(u=Depends(admin), db=Depends(db_dep)):
-        cases = await db.rows(
-            "cases",
-            fields="id,title,factory,programme,inspection_on,reviewer_id,created_at,manager_notified_at",
-            filters={
-                "inspection_on": "not.is.null",
-                "archived": "eq.false",
-                "deleting": "eq.false",
-            },
-            order="inspection_on,id",
-        )
+        filters = {
+            "inspection_on": "not.is.null",
+            "archived": "eq.false",
+            "deleting": "eq.false",
+        }
+        try:
+            cases = await db.rows(
+                "cases",
+                fields="id,title,factory,programme,inspection_on,reviewer_id,created_at,manager_notified_at,inspection_kind,follow_up_of,follow_up_root_id,follow_up_number",
+                filters=filters,
+                order="inspection_on,id",
+            )
+        except PlatformError:
+            cases = await db.rows(
+                "cases",
+                fields="id,title,factory,programme,inspection_on,reviewer_id,created_at,manager_notified_at",
+                filters=filters,
+                order="inspection_on,id",
+            )
+            for case in cases:
+                case.update(
+                    inspection_kind="initial",
+                    follow_up_of=None,
+                    follow_up_root_id=case["id"],
+                    follow_up_number=0,
+                )
         if not cases:
             return []
 

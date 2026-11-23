@@ -659,6 +659,42 @@ button.file-row:hover,
   gap: 8px;
   margin-top: 5px;
 }
+.follow-up-source + .follow-up-source {
+  margin-top: 14px;
+}
+.follow-up-document-list {
+  margin: 0 20px 14px;
+  border: 1px solid #e7ede8;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.follow-up-document {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 13px;
+  border-top: 1px solid #e7ede8;
+}
+.follow-up-document:first-child {
+  border-top: 0;
+}
+.follow-up-document > span {
+  min-width: 0;
+}
+.follow-up-document b,
+.follow-up-document small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.follow-up-document small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.follow-up-source > .empty-text {
+  margin: 8px 20px 14px;
+}
 .app-foot {
   display: flex;
   align-items: center;
@@ -1657,6 +1693,40 @@ input[type="checkbox"] {
 .entry-panel a { color: var(--green); text-decoration: underline; }
 .entry-panel form, .admin-form { display: grid; gap: 12px; }
 .entry-panel label, .admin-form label { display: grid; gap: 4px; }
+.follow-up-date-picker { display: grid; gap: 8px; }
+.follow-up-date-value { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; }
+.follow-up-date-value input { cursor: default; }
+.follow-up-date-value button,
+.follow-up-calendar-head button {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  border: 1px solid var(--sp-line, #b8c6bc);
+  border-radius: 7px;
+  background: var(--sp-surface, #fff);
+  color: var(--sp-text, var(--ink));
+}
+.follow-up-calendar {
+  width: min(100%, 380px);
+  padding: 12px;
+  border: 1px solid var(--sp-line, #b8c6bc);
+  border-radius: 10px;
+  background: var(--sp-surface, #fff);
+}
+.follow-up-calendar-head { display: grid; grid-template-columns: 40px 1fr 40px; gap: 8px; align-items: center; text-align: center; }
+.follow-up-calendar-head button { height: 36px; font-size: 22px; line-height: 1; }
+.follow-up-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-top: 10px; }
+.follow-up-calendar-weekday,
+.follow-up-calendar-empty,
+.follow-up-calendar-grid > button { display: grid; place-items: center; min-height: 36px; }
+.follow-up-calendar-weekday { color: var(--sp-muted, var(--muted)); font-size: 12px; font-weight: 700; }
+.follow-up-calendar-grid > button { border: 1px solid transparent; border-radius: 7px; background: var(--sp-surface-soft, #edf6f0); color: var(--sp-text, var(--ink)); font: inherit; cursor: pointer; }
+.follow-up-calendar-grid > button:hover:not(:disabled) { border-color: #2e654f; background: #dcefe4; }
+.follow-up-calendar-grid > button.selected { background: #145b45; color: white; }
+.follow-up-calendar-grid > button:disabled,
+.follow-up-calendar-head button:disabled,
+.follow-up-date-value button:disabled { background: var(--sp-surface-soft, #f1f3f1); color: var(--sp-muted, #9aa69f); cursor: not-allowed; }
+.follow-up-calendar-note { margin: 10px 0 0; color: var(--sp-muted, var(--muted)); font-size: 12px; }
 .email-domain-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

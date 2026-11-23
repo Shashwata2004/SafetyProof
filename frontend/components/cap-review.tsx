@@ -323,11 +323,21 @@ function FindingPanel({
           <article className="cap-action" key={action.id}>
             <div className="inline-actions">
               <Link2 size={17} />
-              <Tag tone={newest?.decision === "confirm" ? "green" : ""}>
+              <Tag
+                tone={
+                  newest?.decision === "confirm"
+                    ? "green"
+                    : suggestion?.basis === "explicit_reference_conflict"
+                      ? "amber"
+                      : ""
+                }
+              >
                 {newest
                   ? newest.decision === "confirm"
                     ? "Link confirmed"
                     : "Link dismissed"
+                  : suggestion?.basis === "explicit_reference_conflict"
+                    ? "FI reference · check mismatch"
                   : suggestion?.basis === "explicit_reference"
                     ? "Explicit reference"
                     : "Possible match"}

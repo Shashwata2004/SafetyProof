@@ -302,6 +302,8 @@ button, input, select, textarea { font: inherit; }
 .unified-app-shell .tabs button { color: var(--sp-muted); }
 .unified-app-shell .tabs .sel { border-color: var(--sp-line); background: var(--sp-surface); color: var(--sp-text); }
 .unified-app-shell .admin-row, .unified-app-shell .file-row, .unified-app-shell .version-row { border-color: var(--sp-line); }
+.unified-app-shell .follow-up-document-list, .unified-app-shell .follow-up-document { border-color: var(--sp-line); }
+.unified-app-shell .follow-up-document small { color: var(--sp-muted); }
 .unified-app-shell .admin-row:hover, .unified-app-shell .file-row:hover, .unified-app-shell .version-row:hover { background: var(--sp-surface-soft); }
 .unified-app-shell .notification-popover, .unified-app-shell .notification-popover-head { border-color: var(--sp-line); background: var(--sp-surface); color: var(--sp-text); }
 .unified-app-shell .notification-item { border-color: var(--sp-line); color: var(--sp-text); }
@@ -312,6 +314,27 @@ button, input, select, textarea { font: inherit; }
 .unified-app-shell .case-metric strong { color: var(--sp-text); }
 .unified-app-shell .case-metric span { color: var(--sp-muted); }
 .v2-workspace-notice { margin: 0 0 18px; padding: 13px 16px; border: 1px solid color-mix(in srgb, var(--sp-amber) 45%, var(--sp-line)); border-radius: 14px; background: color-mix(in srgb, var(--sp-amber) 10%, var(--sp-surface)); color: var(--sp-text); font-weight: 700; }
+.unified-app-shell .coverage { margin: 0; padding: 16px 22px 18px; border-top: 1px solid var(--sp-line); background: color-mix(in srgb, #2b929c 8%, var(--sp-surface)); color: var(--sp-text); }
+.unified-app-shell .coverage summary { color: #45bdc2; font-weight: 800; }
+.unified-app-shell .coverage summary::marker { color: #45bdc2; }
+.unified-app-shell .coverage-summary { margin: 10px 0; padding: 9px 12px; border-left: 3px solid #45bdc2; border-radius: 0 9px 9px 0; background: color-mix(in srgb, #2b929c 12%, var(--sp-surface)); color: var(--sp-text); }
+.unified-app-shell .coverage-documents { margin: 8px 0; padding-left: 22px; }
+.unified-app-shell .coverage-documents li { padding: 2px 0; color: color-mix(in srgb, var(--sp-text) 78%, #45bdc2); }
+.unified-app-shell .coverage-checks { margin: 10px 0 0; padding-top: 11px; border-top: 1px solid var(--sp-line); display: flex; flex-wrap: wrap; gap: 9px; }
+.unified-app-shell .coverage-check { display: inline-flex; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid color-mix(in srgb, #e8a43b 40%, var(--sp-line)); border-radius: 9px; background: color-mix(in srgb, #e8a43b 9%, var(--sp-surface)); }
+.unified-app-shell .coverage-check b { color: #64b9e8; font-size: .76rem; }
+.unified-app-shell .coverage-check i { color: #eab657; font-size: .76rem; font-style: normal; font-weight: 750; text-transform: capitalize; }
+.unified-app-shell .review-actions { padding: 20px 22px; border-top: 1px solid var(--sp-line); background: color-mix(in srgb, #3bb88f 5%, var(--sp-surface)); }
+.unified-app-shell .review-actions h3 { margin: 0 0 10px; color: #48c99b; }
+.unified-app-shell .review-awaiting { width: fit-content; margin: 8px 0 14px !important; padding: 7px 11px; border: 1px solid color-mix(in srgb, var(--sp-amber) 44%, var(--sp-line)); border-radius: 999px; background: color-mix(in srgb, var(--sp-amber) 12%, var(--sp-surface)); color: #eab657 !important; font-weight: 700; }
+.unified-app-shell .review-actions label { color: #64b9e8; font-weight: 750; }
+.unified-app-shell .review-actions textarea { margin-top: 7px; border-color: color-mix(in srgb, #64b9e8 40%, var(--sp-line)); background: var(--sp-surface); color: var(--sp-text); }
+.unified-app-shell .review-actions textarea:focus { border-color: #64b9e8; outline: 3px solid color-mix(in srgb, #64b9e8 20%, transparent); }
+.unified-app-shell button.review-action { min-height: 42px; padding: 0 14px; border: 1px solid var(--sp-line); border-radius: 10px; background: var(--sp-surface); color: var(--sp-text); font-weight: 750; }
+.unified-app-shell button.review-action-accept { border-color: #159b76; background: #087c63; color: #fff; }
+.unified-app-shell button.review-action-dismiss { border-color: color-mix(in srgb, var(--sp-muted) 45%, var(--sp-line)); color: var(--sp-muted); }
+.unified-app-shell button.review-action-request_evidence { border-color: color-mix(in srgb, #e8a43b 50%, var(--sp-line)); background: color-mix(in srgb, #e8a43b 12%, var(--sp-surface)); color: #eab657; }
+.unified-app-shell button.review-action-comment { border-color: color-mix(in srgb, #64b9e8 48%, var(--sp-line)); background: color-mix(in srgb, #64b9e8 10%, var(--sp-surface)); color: #64b9e8; }
 .analytics-welcome { min-height: 180px; padding: clamp(28px, 4vw, 50px); border-radius: var(--sp-radius); background: linear-gradient(120deg, #15323b, #23636d 66%, #a8642f); color: white; box-shadow: 0 22px 55px rgba(12,48,57,.22); display: flex; align-items: center; justify-content: space-between; gap: 30px; overflow: hidden; position: relative; }
 .analytics-welcome::after { content: ""; position: absolute; width: 280px; height: 280px; right: -60px; top: -110px; border: 55px solid rgba(255,255,255,.09); border-radius: 50%; }
 .analytics-welcome p { margin: 0 0 8px; color: rgba(255,255,255,.78); font-size: .82rem; font-weight: 750; }
@@ -326,8 +349,8 @@ button, input, select, textarea { font: inherit; }
 .kpi-card { min-width: 0; min-height: 160px; padding: 22px; border: 1px solid var(--sp-line); border-radius: 20px; background: var(--sp-surface); box-shadow: var(--sp-shadow); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; align-items: start; gap: 13px; overflow: hidden; }
 .kpi-card span, .kpi-card small { display: block; color: var(--sp-muted); font-size: .76rem; line-height: 1.35; overflow-wrap: anywhere; }
 .kpi-card strong { align-self: center; font-size: clamp(2rem, 3vw, 2.35rem); line-height: .95; letter-spacing: -.055em; }
-.kpi-card.highlight { border: 0; background: linear-gradient(135deg, #2f929a, #1c5668); color: white; }
-.kpi-card.highlight span, .kpi-card.highlight small { color: rgba(255,255,255,.78); }
+.kpi-card.featured { border: 0; background: linear-gradient(135deg, #2f929a, #1c5668); color: white; }
+.kpi-card.featured span, .kpi-card.featured small { color: rgba(255,255,255,.78); }
 .analytics-grid { margin-top: 18px; display: grid; grid-template-columns: 1.05fr 1fr .82fr; gap: 16px; }
 .chart-card { min-height: 330px; padding: 24px; }
 .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }

@@ -402,23 +402,28 @@ function Detail({
         )}
       </div>
       <details className="coverage">
-        <summary>Evidence coverage and verification checks</summary>
-        <p>
+        <summary><span>Evidence coverage and verification checks</span></summary>
+        <p className="coverage-summary">
           {r.coverage.full_search
             ? "Complete secondary search performed."
             : "Assessment used selected evidence passages."}{" "}
           {r.coverage.unreadable_pages} uncertain or unreadable pages.
         </p>
-        <ul>
+        <ul className="coverage-documents">
           {r.coverage.documents.map((v) => (
             <li key={v.version_id}>
               {v.document} · {v.readable}/{v.pages} readable pages
             </li>
           ))}
         </ul>
-        <p>
-          Scope check · {r.checks.scope} / Second opinion ·{" "}
-          {r.checks.secondary.replaceAll("_", " ")}
+        <p className="coverage-checks">
+          <span className="coverage-check">
+            <b>Scope check</b><i>{r.checks.scope.replaceAll("_", " ")}</i>
+          </span>
+          <span className="coverage-check">
+            <b>Second opinion</b>
+            <i>{r.checks.secondary.replaceAll("_", " ")}</i>
+          </span>
         </p>
       </details>
       <div className="review-actions">
@@ -434,7 +439,7 @@ function Detail({
             </div>
           ))
         ) : (
-          <p className="muted">Awaiting reviewer decision.</p>
+          <p className="muted review-awaiting">Awaiting reviewer decision.</p>
         )}
         {writable && (
           <>
@@ -452,7 +457,7 @@ function Detail({
             <div className="inline-actions">
               {Object.entries(decisions).map(([key, label]) => (
                 <button
-                  className={key === "accept" ? "primary" : ""}
+                  className={`review-action review-action-${key}${key === "accept" ? " primary" : ""}`}
                   key={key}
                   disabled={
                     busy ||

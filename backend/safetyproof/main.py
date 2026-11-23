@@ -307,6 +307,42 @@ async def get_case(cid: UUID, u: User = Depends(user), d=Depends(db)):
             "jobs", token=u.token, fields=JOB_FIELDS, filters=f, order="created_at.desc"
         ),
     )
+    prior_case_ids = []
+    prior_case_titles = {}
+    if c.get("inspection_kind") == "follow_up" and c.get("follow_up_root_id"):
+        prior_cases = await d.rows(
+            "cases",
+            token=u.token,
+            fields="id,title,inspection_on,follow_up_number",
+            filters={
+                "follow_up_root_id": "eq." + c["follow_up_root_id"],
+                "inspection_on": "lt." + c["inspection_on"],
+                "deleting": "eq.false",
+            },
+            order="inspection_on.asc,follow_up_number.asc",
+        )
+        prior_case_ids = [row["id"] for row in prior_cases]
+        prior_case_titles = {row["id"]: row["title"] for row in prior_cases}
+        if prior_case_ids:
+            prior_filter = "in.(" + ",".join(prior_case_ids) + ")"
+            prior_docs, prior_versions = await asyncio.gather(
+                d.rows(
+                    "documents",
+                    token=u.token,
+                    filters={"case_id": prior_filter, "deleted_at": "is.null"},
+                ),
+                d.rows(
+                    "document_versions",
+                    token=u.token,
+                    filters={"case_id": prior_filter},
+                    order="created_at",
+                ),
+            )
+            docs.extend(
+                {**row, "source_case_title": prior_case_titles.get(row["case_id"])}
+                for row in prior_docs
+            )
+            all_versions.extend(prior_versions)
     active_document_ids = {row["id"] for row in docs}
     versions = [
         row for row in all_versions if row["document_id"] in active_document_ids
@@ -316,6 +352,7 @@ async def get_case(cid: UUID, u: User = Depends(user), d=Depends(db)):
         "role": members[0]["role"],
         "documents": docs,
         "versions": versions,
+        "prior_case_ids": prior_case_ids,
         "runs": runs,
         "jobs": jobs,
     }
@@ -394,6 +431,16 @@ async def delete_case(
     cid: UUID, request: Request, u: User = Depends(user), d=Depends(db)
 ):
     c = await case_to_manage(cid, request, u, d)
+    linked_followups = await d.rows(
+        "cases",
+        fields="id,title",
+        filters={"follow_up_of": "eq." + str(cid), "deleting": "eq.false"},
+    )
+    if linked_followups:
+        raise HTTPException(
+            409,
+            "Delete later follow-up inspections first; this case provides their related files.",
+        )
     # The tombstone prevents new jobs and reservations while cleanup is retried.
     await d.call(
         "PATCH",
@@ -495,10 +542,17 @@ async def reserve_upload(
                 "deleted_at": "is.null",
             },
         )
-        if existing_caps:
+        existing_cap_ids = {str(row["id"]) for row in existing_caps}
+        requested_document_id = str(body.document_id) if body.document_id else None
+        if requested_document_id and requested_document_id not in existing_cap_ids:
+            raise HTTPException(
+                422,
+                "A CAP revision must use the existing CAP record for this case.",
+            )
+        if existing_caps and requested_document_id not in existing_cap_ids:
             raise HTTPException(
                 409,
-                "This case already has a CAP. A second CAP cannot be uploaded.",
+                "This case already has a CAP. Choose its existing record to upload a revision.",
             )
     version = await d.rpc(
         "reserve", cid=str(cid), actor_id=u.id, data=body.model_dump(mode="json")
