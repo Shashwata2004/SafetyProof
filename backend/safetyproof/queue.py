@@ -54,8 +54,7 @@ async def consume(work: Work):
             await db.rpc("yield_job", jid=job["id"], ticket=job["lease"])
             raise RetryAfter(2)
         finally:
-            if ai.client:
-                await ai.client.aio.aclose()
+            await ai.aclose()
         current = await db.one("jobs", work.job_id)
         if current["state"] in ("queued", "running"):
             available = datetime.fromisoformat(current["available_at"])

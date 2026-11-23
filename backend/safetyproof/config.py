@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     admin_email: str = ""
     admin_password: str = Field(default="", repr=False)
     gemini_api_key: str = Field(default="", repr=False)
+    gemini_api_keys: str = Field(default="", repr=False)
     llm_model: str = "gemini-3.5-flash-lite"
     embedding_model: str = "gemini-embedding-001"
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
     worker_enabled: bool = True
     queue_enabled: bool = False
     min_request_interval: float = Field(default=1, ge=0)
+    gemini_key_min_interval: float = Field(default=6, ge=0)
     sample_dir: Path = (
         ASSETS / "documents" if ASSETS.exists() else ROOT / "fixtures" / "demo"
     )
@@ -43,6 +45,12 @@ class Settings(BaseSettings):
             "second_opinion": "blind_same_model",
             "parser": PARSER,
         }
+
+    def gemini_keys(self):
+        pool = [key.strip() for key in self.gemini_api_keys.split(",") if key.strip()]
+        if not pool and self.gemini_api_key:
+            pool = [self.gemini_api_key.strip()]
+        return list(dict.fromkeys(pool))
 
 
 @lru_cache
