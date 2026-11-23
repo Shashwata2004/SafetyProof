@@ -149,8 +149,16 @@ def extract_metadata(pages, filename, scheduled_date=None):
         issued_on = inspection_date
 
     period_start = period_end = None
-    start_label = re.compile(r"(?:period\s+start|start\s+date|from)\b", re.IGNORECASE)
-    end_label = re.compile(r"(?:period\s+end|end\s+date|through|to)\b", re.IGNORECASE)
+    start_label = re.compile(
+        r"(?:period\s+start(?:s|ing)?|period\s+begins?|"
+        r"coverage\s+(?:starts?|begins?))\b",
+        re.IGNORECASE,
+    )
+    end_label = re.compile(
+        r"(?:period\s+ends?|end\s+date|coverage\s+(?:ends?|through)|"
+        r"valid\s+until)\b",
+        re.IGNORECASE,
+    )
     for line in lines:
         match = start_label.search(line)
         if match and not period_start:
@@ -161,7 +169,7 @@ def extract_metadata(pages, filename, scheduled_date=None):
     if not (period_start and period_end):
         period_label = re.compile(
             r"(?:reporting|review|inspection|incident|coverage)?\s*period|"
-            r"period covered|period of review",
+            r"period covered|period of review|coverage window",
             re.IGNORECASE,
         )
         for line in lines:
