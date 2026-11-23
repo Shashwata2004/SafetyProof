@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import json
+import logging
 from contextlib import asynccontextmanager, suppress
 from datetime import date, datetime
 from typing import Literal
@@ -17,8 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from .accounts import account_router
 from .ai import Gemini
 from .config import JOB_FIELDS, settings
-from .document_metadata import extract_metadata
+from .document_metadata import extract_cap_submission_deadline, extract_metadata
+from .document_duplicates import content_fingerprint, duplicate_candidate
 from .document_validation import (
+    classify_factory_record_content,
     check_factory_record_content,
     check_inspection_content,
 )
@@ -36,6 +40,7 @@ from .platform import Platform, PlatformError
 from .worker import isolated_pdf, loop
 
 cfg = settings()
+logger = logging.getLogger(__name__)
 bearer = HTTPBearer(auto_error=False)
 
 
@@ -160,6 +165,10 @@ async def user(
                 or path.startswith("/v1/document-versions/")
                 and path.endswith("/finalize")
             )
+        ) or (
+            request.method == "DELETE"
+            and path.startswith("/v1/cases/")
+            and "/documents/" in path
         )
         if role != "factory_manager" or not manager_write:
             raise HTTPException(403, "Review access required.")
@@ -233,6 +242,44 @@ async def list_cases(u: User = Depends(user), d=Depends(db)):
     return await d.rows("cases", token=u.token, order="created_at.desc")
 
 
+@app.get("/v1/notifications")
+async def reviewer_notifications(u: User = Depends(user), d=Depends(db)):
+    if u.role != "reviewer":
+        raise HTTPException(403, "Reviewer notifications are available to reviewers.")
+    return await d.rows(
+        "reviewer_notifications",
+        token=u.token,
+        fields="id,case_id,document_id,title,body,created_at,read_at",
+        filters={"user_id": "eq." + u.id},
+        order="created_at.desc",
+    )
+
+
+@app.post("/v1/notifications/{notification_id}/read")
+async def mark_reviewer_notification_read(
+    notification_id: UUID, u: User = Depends(user), d=Depends(db)
+):
+    if u.role != "reviewer":
+        raise HTTPException(403, "Reviewer notifications are available to reviewers.")
+    rows = await d.rows(
+        "reviewer_notifications",
+        token=u.token,
+        fields="id,read_at",
+        filters={"id": "eq." + str(notification_id), "user_id": "eq." + u.id},
+    )
+    if not rows:
+        raise HTTPException(404, "This notification is unavailable.")
+    if not rows[0]["read_at"]:
+        await d.call(
+            "PATCH",
+            "/rest/v1/reviewer_notifications",
+            admin=True,
+            params={"id": "eq." + str(notification_id), "user_id": "eq." + u.id},
+            data={"read_at": datetime.now().astimezone().isoformat()},
+        )
+    return {"read": True}
+
+
 @app.post("/v1/cases", status_code=403)
 async def create_case(u: User = Depends(user)):
     raise HTTPException(403, "Only an administrator can create and assign a case.")
@@ -242,9 +289,13 @@ async def create_case(u: User = Depends(user)):
 async def get_case(cid: UUID, u: User = Depends(user), d=Depends(db)):
     c = await d.one("cases", cid, token=u.token)
     f = {"case_id": "eq." + str(cid)}
-    members, docs, versions, runs, jobs = await asyncio.gather(
+    members, docs, all_versions, runs, jobs = await asyncio.gather(
         d.rows("case_members", token=u.token, filters=f),
-        d.rows("documents", token=u.token, filters=f),
+        d.rows(
+            "documents",
+            token=u.token,
+            filters={**f, "deleted_at": "is.null"},
+        ),
         d.rows("document_versions", token=u.token, filters=f, order="created_at"),
         d.rows(
             "verification_runs",
@@ -257,6 +308,10 @@ async def get_case(cid: UUID, u: User = Depends(user), d=Depends(db)):
             "jobs", token=u.token, fields=JOB_FIELDS, filters=f, order="created_at.desc"
         ),
     )
+    active_document_ids = {row["id"] for row in docs}
+    versions = [
+        row for row in all_versions if row["document_id"] in active_document_ids
+    ]
     return {
         "case": c,
         "role": members[0]["role"],
@@ -366,6 +421,54 @@ async def delete_case(
     return {"deleted": True}
 
 
+@app.delete("/v1/cases/{cid}/documents/{did}")
+async def remove_factory_document(
+    cid: UUID, did: UUID, u: User = Depends(user), d=Depends(db)
+):
+    if u.role != "factory_manager":
+        raise HTTPException(403, "Only the factory manager can remove factory documents.")
+    case = await d.one("cases", cid, token=u.token)
+    if case["archived"] or case["deleting"]:
+        raise HTTPException(409, "This case is closed to document changes.")
+    membership = await d.rows(
+        "case_members",
+        token=u.token,
+        fields="role",
+        filters={"case_id": "eq." + str(cid), "user_id": "eq." + u.id},
+    )
+    if not membership or membership[0]["role"] != "manager":
+        raise HTTPException(403, "Factory manager access is required for this case.")
+
+    document = await d.one("documents", did)
+    if document["case_id"] != str(cid) or document.get("deleted_at"):
+        raise HTTPException(404, "This document is unavailable.")
+    versions = await d.rows(
+        "document_versions",
+        fields="id,issuer,status",
+        filters={"case_id": "eq." + str(cid), "document_id": "eq." + str(did)},
+    )
+    if not versions:
+        raise HTTPException(404, "This document has no uploaded versions.")
+    if any(version["status"] in ("awaiting_upload", "queued") for version in versions):
+        raise HTTPException(409, "Wait for document processing to finish before removing it.")
+
+    await d.call(
+        "PATCH",
+        "/rest/v1/documents",
+        admin=True,
+        params={"id": "eq." + str(did), "case_id": "eq." + str(cid)},
+        data={"deleted_at": datetime.now().astimezone().isoformat(), "deleted_by": u.id},
+    )
+    await d.call(
+        "PATCH",
+        "/rest/v1/document_versions",
+        admin=True,
+        params={"case_id": "eq." + str(cid), "document_id": "eq." + str(did)},
+        data={"content_fingerprint": None, "duplicate_warning": None},
+    )
+    return {"deleted": True}
+
+
 @app.post("/v1/cases/{cid}/uploads", response_model=UploadTicket)
 async def reserve_upload(
     cid: UUID, body: UploadInput, u: User = Depends(user), d=Depends(db)
@@ -379,6 +482,24 @@ async def reserve_upload(
         if u.role == "factory_manager" and body.role == "inspection":
             raise HTTPException(
                 403, "Factory managers cannot upload reviewer inspection reports."
+            )
+        if u.role == "factory_manager" and not body.issued_on:
+            raise HTTPException(422, "Enter the factory document's issue date.")
+    if u.role == "factory_manager" and body.role == "cap":
+        existing_caps = await d.rows(
+            "documents",
+            token=u.token,
+            fields="id",
+            filters={
+                "case_id": "eq." + str(cid),
+                "role": "eq.cap",
+                "deleted_at": "is.null",
+            },
+        )
+        if existing_caps:
+            raise HTTPException(
+                409,
+                "This case already has a CAP. A second CAP cannot be uploaded.",
             )
     version = await d.rpc(
         "reserve", cid=str(cid), actor_id=u.id, data=body.model_dump(mode="json")
@@ -411,9 +532,13 @@ async def inspect_upload(
         "maintenance",
         "other",
     }
-    if u.role == "factory_manager" and expected_role not in factory_record_roles:
+    if (
+        u.role == "factory_manager"
+        and expected_role
+        and expected_role not in factory_record_roles
+    ):
         raise HTTPException(
-            422, "Choose the factory record type before checking this PDF."
+            422, "Choose a valid factory record type before checking this PDF."
         )
     data = await file.read()
     version_id = str(uuid4())
@@ -424,12 +549,24 @@ async def inspect_upload(
     fields = extract_metadata(
         parsed["pages"],
         getattr(file, "filename", "document.pdf") or "document.pdf",
-        case.get("inspection_on"),
+        case.get("inspection_on") if u.role == "reviewer" else None,
+    )
+    content_pages = await parse_all_pdf_pages(
+        data, version_id, parsed, cfg.tessdata_prefix
+    )
+    fields["content_fingerprint"] = content_fingerprint(content_pages, data)
+    existing = await case_document_text(d, cid)
+    fields["duplicate_of"] = await find_exact_duplicate(
+        d,
+        cid,
+        fields["content_fingerprint"],
+        hashlib.sha256(data).hexdigest(),
+        existing,
+    )
+    fields["duplicate_warning"] = await find_duplicate_warning(
+        d, cid, content_pages, fields, existing
     )
     if u.role == "reviewer" and case.get("inspection_on"):
-        content_pages = await parse_all_pdf_pages(
-            data, version_id, parsed, cfg.tessdata_prefix
-        )
         fields["pages_checked"] = len(content_pages)
         fields["readable_pages"] = sum(
             page.get("quality") == "readable" for page in content_pages
@@ -444,23 +581,41 @@ async def inspect_upload(
             )
         )
     elif u.role == "factory_manager":
-        content_pages = await parse_all_pdf_pages(
-            data, version_id, parsed, cfg.tessdata_prefix
-        )
         fields["pages_checked"] = len(content_pages)
         fields["readable_pages"] = sum(
             page.get("quality") == "readable" for page in content_pages
         )
-        fields.update(
-            await check_factory_record_content(
-                content_pages,
-                getattr(file, "filename", "factory-record.pdf") or "factory-record.pdf",
-                case["factory"],
-                case.get("inspection_on"),
-                expected_role,
-                request.app.state.ai,
+        filename = getattr(file, "filename", "factory-record.pdf") or "factory-record.pdf"
+        if expected_role:
+            fields["role"] = expected_role
+            fields.update(
+                await check_factory_record_content(
+                    content_pages,
+                    filename,
+                    case["factory"],
+                    case.get("inspection_on"),
+                    expected_role,
+                    request.app.state.ai,
+                )
             )
-        )
+        else:
+            fields.update(
+                await classify_factory_record_content(
+                    content_pages,
+                    filename,
+                    case["factory"],
+                    case.get("inspection_on"),
+                    request.app.state.ai,
+                )
+            )
+        factory_role = fields["role"]
+        if factory_role == "cap":
+            deadline = await case_cap_submission_deadline(d, cid, u.token)
+            fields["cap_submission_deadline"] = deadline
+            issue_date = fields.get("issued_on")
+            fields["cap_deadline_warning"] = (
+                cap_deadline_warning(issue_date, deadline) if deadline else None
+            )
     else:
         fields.update(
             {
@@ -473,9 +628,113 @@ async def inspect_upload(
     return fields
 
 
+async def case_document_text(d, cid):
+    docs = await d.rows(
+        "documents",
+        fields="id,role",
+        filters={"case_id": "eq." + str(cid), "deleted_at": "is.null"},
+    )
+    if not docs:
+        return []
+    roles_by_id = {row["id"]: row["role"] for row in docs}
+    # Use only columns present in the base schema. The optional migration adds
+    # fingerprint persistence, but OCR comparison also works from page text
+    # and the existing PDF hash before that migration is installed.
+    versions = await d.rows(
+        "document_versions",
+        fields="id,document_id,issued_on,period_start,period_end,status,sha256",
+        filters={
+            "case_id": "eq." + str(cid),
+            "document_id": "in.({})".format(",".join(roles_by_id)),
+            "status": "in.(queued,ready,partial)",
+        },
+    )
+    records = []
+    for version in versions:
+        pages = await d.rows(
+            "pages",
+            fields="page_no,text",
+            filters={"version_id": "eq." + version["id"]},
+            order="page_no",
+        )
+        records.append(
+            {
+                **version,
+                "role": roles_by_id.get(version["document_id"]),
+                "pages": pages,
+            }
+        )
+    return records
+
+
+async def find_exact_duplicate(d, cid, fingerprint, raw_sha256=None, existing=None):
+    if not fingerprint and not raw_sha256:
+        return None
+    records = existing if existing is not None else await case_document_text(d, cid)
+    for record in records:
+        if raw_sha256 and record.get("sha256") == raw_sha256:
+            return record["id"]
+        if content_fingerprint(record.get("pages", [])) == fingerprint:
+            return record["id"]
+    return None
+
+
+async def find_duplicate_warning(d, cid, pages, metadata, existing=None):
+    records = existing if existing is not None else await case_document_text(d, cid)
+    return duplicate_candidate(pages, metadata, records)
+
+
+async def case_cap_submission_deadline(d, cid, token):
+    documents = await d.rows(
+        "documents",
+        token=token,
+        fields="id",
+        filters={"case_id": "eq." + str(cid), "role": "eq.inspection"},
+    )
+    document_ids = {row["id"] for row in documents}
+    if not document_ids:
+        return None
+    versions = await d.rows(
+        "document_versions",
+        token=token,
+        fields="id,document_id,status",
+        filters={"case_id": "eq." + str(cid)},
+        order="created_at.desc",
+    )
+    report = next(
+        (
+            version
+            for version in versions
+            if version["document_id"] in document_ids
+            and version["status"] in ("ready", "partial")
+        ),
+        None,
+    )
+    if not report:
+        return None
+    pages = await d.rows(
+        "pages",
+        token=token,
+        fields="page_no,text",
+        filters={"version_id": "eq." + report["id"]},
+        order="page_no",
+    )
+    return extract_cap_submission_deadline(pages)
+
+
+def cap_deadline_warning(issue_date, deadline):
+    if issue_date and deadline and issue_date > deadline:
+        return (
+            f"CAP issued on {issue_date}, after the inspection report's CAP "
+            f"submission deadline ({deadline}). Reviewer review required."
+        )
+    return None
+
+
 @app.post("/v1/document-versions/{vid}/finalize", status_code=202)
 async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depends(db)):
     v = await d.one("document_versions", vid, token=u.token)
+    data = parsed = content_pages = None
     if u.role == "reviewer":
         case = await d.one("cases", v["case_id"], token=u.token)
         if case.get("inspection_on"):
@@ -581,8 +840,111 @@ async def finalize(vid: UUID, request: Request, u: User = Depends(user), d=Depen
                     content_check["content_reason"]
                     or "This PDF could not be confirmed as the selected factory record type.",
                 )
+            if document["role"] == "cap":
+                deadline = await case_cap_submission_deadline(d, v["case_id"], u.token)
+                warning = cap_deadline_warning(v.get("issued_on"), deadline)
+                try:
+                    await d.call(
+                        "PATCH",
+                        "/rest/v1/document_versions",
+                        admin=True,
+                        params={"id": "eq." + str(vid)},
+                        data={"cap_deadline_warning": warning},
+                    )
+                except PlatformError:
+                    # CAP upload remains usable before the optional warning
+                    # column migration is applied.
+                    pass
+    # Repeat duplicate detection on the server after the private upload. The
+    # database RPC serializes fingerprint registration per case, so parallel
+    # uploads cannot bypass this check.
+    if data is None:
+        data = await d.download(v["object_key"])
+    if parsed is None:
+        try:
+            parsed = await isolated_pdf(data, str(vid), cfg.tessdata_prefix, 0, 8)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    if content_pages is None:
+        content_pages = await parse_all_pdf_pages(
+            data, str(vid), parsed, cfg.tessdata_prefix
+        )
+    metadata = extract_metadata(
+        parsed["pages"], v.get("filename") or "document.pdf", None
+    )
+    fingerprint = content_fingerprint(content_pages, data)
+    existing = await case_document_text(d, v["case_id"])
+    known_duplicate = await find_exact_duplicate(
+        d, v["case_id"], fingerprint, hashlib.sha256(data).hexdigest(), existing
+    )
+    warning = await find_duplicate_warning(
+        d, v["case_id"], content_pages, metadata, existing
+    )
+    if known_duplicate:
+        duplicate_id = known_duplicate
+        await d.call(
+            "PATCH",
+            "/rest/v1/document_versions",
+            admin=True,
+            params={"id": "eq." + str(vid)},
+            data={
+                "status": "duplicate",
+                "duplicate_of": known_duplicate,
+                "error": "This PDF repeats readable document text already uploaded in this case.",
+            },
+        )
+    else:
+        try:
+            duplicate_id = await d.rpc(
+                "register_document_fingerprint",
+                cid=v["case_id"],
+                actor_id=u.id,
+                vid=str(vid),
+                fingerprint=fingerprint,
+                warning=warning,
+                existing_duplicate=None,
+            )
+        except PlatformError:
+            # Before migration, exact duplicates are still caught above. The
+            # optional database-persisted warning and race-safe index wait for
+            # the SQL migration, but normal uploads must continue to work.
+            duplicate_id = None
+    if duplicate_id:
+        await d.remove([v["object_key"]])
+        raise HTTPException(
+            409,
+            "This PDF contains the same readable document text as an existing upload in this case. It was blocked as a duplicate.",
+        )
     jid = await d.rpc("ingest", cid=v["case_id"], actor_id=u.id, vid=str(vid))
     await schedule_work(request)
+    if u.role == "factory_manager":
+        try:
+            case = await d.one("cases", v["case_id"], token=u.token)
+            if case.get("reviewer_id"):
+                document = await d.one(
+                    "documents", v["document_id"], token=u.token, fields="title"
+                )
+                await d.call(
+                    "POST",
+                    "/rest/v1/reviewer_notifications",
+                    admin=True,
+                    data={
+                        "user_id": case["reviewer_id"],
+                        "case_id": v["case_id"],
+                        "document_id": v["document_id"],
+                        "version_id": str(vid),
+                        "title": "Factory evidence uploaded",
+                        "body": f'{document["title"]} was uploaded for {case["factory"]}.',
+                    },
+                    headers={"Prefer": "resolution=ignore-duplicates,return=minimal"},
+                )
+        except PlatformError as exc:
+            # The accepted upload should remain successful if notification
+            # persistence is temporarily unavailable.
+            logger.warning(
+                "Could not create reviewer upload notification (Supabase status %s).",
+                exc.status,
+            )
     return {"job_id": jid}
 
 

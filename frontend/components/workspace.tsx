@@ -11,6 +11,7 @@ import {
 import {
   ArrowRight,
   ArrowUpRight,
+  Bell,
   ChevronRight,
   ClipboardCheck,
   FileCheck2,
@@ -34,6 +35,7 @@ import {
   dateText,
   message,
   roles,
+  ReviewerNotification,
 } from "@/lib/api";
 import { Busy, DocIcon, ErrorNote, Modal, PasswordField, Tag } from "./ui";
 import { Viewer, Preview } from "./viewer";
@@ -76,7 +78,8 @@ function App({ basePath }: { basePath: string }) {
   const [restoring, setRestoring] = useState(true),
     [mobile, setMobile] = useState(false);
   const [dialog, setDialog] = useState<"account" | null>(null),
-    [preview, setPreview] = useState<Preview | null>(null);
+    [preview, setPreview] = useState<Preview | null>(null),
+    [notificationsOpen, setNotificationsOpen] = useState(false);
   useEffect(() => {
     if (!config.data?.publishable_key) {
       if (!config.isLoading) setRestoring(false);
@@ -107,6 +110,13 @@ function App({ basePath }: { basePath: string }) {
   const accountName =
     profile?.full_name?.trim() || session?.user.email || "Account";
   const isManager = role === "factory_manager";
+  const reviewerNotifications = useQuery({
+    queryKey: ["reviewer-notifications", token],
+    queryFn: () => api<ReviewerNotification[]>("/v1/notifications", token),
+    enabled: role === "reviewer",
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true,
+  });
   const assigned = useQuery({
     queryKey: ["assigned-factories", session?.user.id],
     queryFn: () =>
@@ -182,6 +192,30 @@ function App({ basePath }: { basePath: string }) {
     });
     setDialog(null);
     router.replace("/login");
+  }
+  async function openReviewerNotification(item: ReviewerNotification) {
+    try {
+      if (!item.read_at)
+        await api(`/v1/notifications/${item.id}/read`, token, "POST");
+      await reviewerNotifications.refetch();
+    } finally {
+      setNotificationsOpen(false);
+      go("documents", item.case_id);
+    }
+  }
+  async function openReviewerCase(caseId: string) {
+    const unread = (reviewerNotifications.data || []).filter(
+      (item) => item.case_id === caseId && !item.read_at,
+    );
+    if (unread.length) {
+      await Promise.allSettled(
+        unread.map((item) =>
+          api(`/v1/notifications/${item.id}/read`, token, "POST"),
+        ),
+      );
+      await reviewerNotifications.refetch();
+    }
+    go("overview", caseId);
   }
   const sample = sampleCatalog;
   const current = token && cid ? dossier.data : undefined;
@@ -336,12 +370,87 @@ function App({ basePath }: { basePath: string }) {
             <ChevronRight size={13} />
             <strong>{title}</strong>
           </div>
-          <button className="top-account" onClick={() => setDialog("account")}>
-            <span className="online" />
-            <span className="account-name" title={accountName}>
-              {accountName}
-            </span>
-          </button>
+          <div className="topbar-actions">
+            {role === "reviewer" && (
+              <div className="notification-menu">
+                <button
+                  className="notification-trigger icon-button"
+                  aria-label={`Notifications${
+                    reviewerNotifications.data?.filter((item) => !item.read_at)
+                      .length
+                      ? `, ${reviewerNotifications.data.filter((item) => !item.read_at).length} unread`
+                      : ""
+                  }`}
+                  aria-expanded={notificationsOpen}
+                  onClick={() => setNotificationsOpen((open) => !open)}
+                >
+                  <Bell size={18} />
+                  {!!reviewerNotifications.data?.some((item) => !item.read_at) && (
+                    <span className="notification-count">
+                      {reviewerNotifications.data.filter((item) => !item.read_at)
+                        .length}
+                    </span>
+                  )}
+                </button>
+                {notificationsOpen && (
+                  <div className="notification-popover">
+                    <div className="notification-popover-head">
+                      <b>Notifications</b>
+                      <button
+                        className="text-button"
+                        onClick={() => setNotificationsOpen(false)}
+                      >
+                        Close
+                      </button>
+                    </div>
+                    {reviewerNotifications.isLoading ? (
+                      <p className="empty-text">Loading notifications…</p>
+                    ) : reviewerNotifications.error ? (
+                      <p className="error-text">
+                        {message(reviewerNotifications.error)}
+                      </p>
+                    ) : reviewerNotifications.data?.length ? (
+                      <div className="notification-list">
+                        {reviewerNotifications.data.map((item) => (
+                          <button
+                            className={
+                              "notification-item " +
+                              (!item.read_at ? "unread" : "")
+                            }
+                            key={item.id}
+                            onClick={() => void openReviewerNotification(item)}
+                          >
+                            <span className="notification-item-dot" />
+                            <span>
+                              <b>{item.title}</b>
+                              <small>{item.body}</small>
+                              <small>
+                                {new Intl.DateTimeFormat("en-GB", {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                }).format(new Date(item.created_at))}
+                              </small>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="empty-text">No notifications yet.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            <button className="top-account" onClick={() => setDialog("account")}>
+              <span className="online" />
+              <span className="account-name" title={accountName}>
+                {accountName}
+              </span>
+            </button>
+          </div>
         </header>
         <main className="content">
           {view === "library" ? (
@@ -595,7 +704,11 @@ function App({ basePath }: { basePath: string }) {
                       <button
                         className="file-row"
                         key={c.id}
-                        onClick={() =>
+                        onClick={() => {
+                          if (role === "reviewer") {
+                            void openReviewerCase(c.id);
+                            return;
+                          }
                           go(
                             isManager
                               ? c.inspection_on
@@ -603,8 +716,8 @@ function App({ basePath }: { basePath: string }) {
                                 : "corrective"
                               : "overview",
                             c.id,
-                          )
-                        }
+                          );
+                        }}
                       >
                         <span className="doc-icon inspection">
                           <FolderOpen size={21} />
@@ -612,6 +725,16 @@ function App({ basePath }: { basePath: string }) {
                         <span className="row-main">
                           <b>{c.title}</b>
                           <small>{c.factory}</small>
+                          {role === "reviewer" &&
+                            reviewerNotifications.data?.some(
+                              (item) =>
+                                item.case_id === c.id && !item.read_at,
+                            ) && (
+                              <small className="case-notification-indicator">
+                                <span aria-hidden="true" />
+                                New factory document
+                              </small>
+                            )}
                         </span>
                         <span className="muted">
                           {c.archived ? "Archived" : dateText(c.created_at)}
