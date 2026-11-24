@@ -605,6 +605,7 @@ function App({ basePath }: { basePath: string }) {
                     />
                   ) : (
                     <Documents
+                      key={cid}
                       dossier={current}
                       token={token}
                       configured={!!config.data?.ai_configured}
