@@ -5,7 +5,6 @@ import "@fontsource-variable/dm-sans";
 import "@fontsource/noto-sans-bengali/400.css";
 import "./style.css";
 import "./v2.css";
-import "./home-theme-control.css";
 import { ThemeProvider } from "@/components/v2/theme-provider";
 import { AuthProvider } from "@/components/v2/auth-provider";
 import { UnifiedAppFrame } from "@/components/v2/unified-app-shell";

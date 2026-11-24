@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useTheme } from "./theme-provider";
 import { FactoryErrorBoundary } from "./factory-error-boundary";
+import { FactorySky } from "./factory-sky";
 
 function Smoke({ dark, animate }: { dark: boolean; animate: boolean }) {
   const puffs = useRef<Array<THREE.Mesh | null>>([]);
@@ -245,9 +246,10 @@ function IndustrialComplex({ dark, animate }: { dark: boolean; animate: boolean 
   );
 }
 
-function FactoryScene({ dark, animate }: { dark: boolean; animate: boolean }) {
+function FactoryScene({ dark, animate, celestialSky, reducedMotion }: { dark: boolean; animate: boolean; celestialSky: boolean; reducedMotion: boolean }) {
   return (
     <>
+      {celestialSky ? <FactorySky reducedMotion={reducedMotion} /> : <>
       <color attach="background" args={[dark ? "#071017" : "#516a74"]} />
       <fog attach="fog" args={[dark ? "#071017" : "#6d858d", 22, 48]} />
       <ambientLight intensity={dark ? 0.42 : 0.78} color={dark ? "#8aa5b1" : "#d9e7e9"} />
@@ -255,6 +257,7 @@ function FactoryScene({ dark, animate }: { dark: boolean; animate: boolean }) {
       <directionalLight position={[10, 14, 9]} intensity={dark ? 2.8 : 3.6} color={dark ? "#c9e1df" : "#fff4df"} castShadow shadow-mapSize={[1536, 1536]} shadow-camera-left={-14} shadow-camera-right={14} shadow-camera-top={12} shadow-camera-bottom={-10} />
       <directionalLight position={[-9, 5, -7]} intensity={dark ? 1.3 : 1.7} color="#4d98a4" />
       <pointLight position={[-5, 4, 7]} intensity={dark ? 9 : 5} distance={14} color="#e89648" />
+      </>}
       <IndustrialComplex dark={dark} animate={animate} />
 
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]}>
@@ -277,7 +280,7 @@ function FactoryScene({ dark, animate }: { dark: boolean; animate: boolean }) {
   );
 }
 
-export function AnimatedGarmentFactory({ compact = false }: { compact?: boolean }) {
+export function AnimatedGarmentFactory({ compact = false, celestialSky = false }: { compact?: boolean; celestialSky?: boolean }) {
   const { theme } = useTheme();
   const [reducedMotion, setReducedMotion] = useState(false);
   const [visible, setVisible] = useState(true);
@@ -301,13 +304,14 @@ export function AnimatedGarmentFactory({ compact = false }: { compact?: boolean 
     <FactoryErrorBoundary>
       <div className={`animated-factory ${compact ? "compact" : ""}`}>
         <Canvas
-          key={theme}
-          aria-label="Animated exterior of a garment factory with decorative chimney smoke"
+          key={celestialSky ? "home-factory" : theme}
+          aria-label={celestialSky ? "Garment factory with a decorative day and night sky" : "Animated exterior of a garment factory with decorative chimney smoke"}
           dpr={[1, 1.5]}
           frameloop={animate ? "always" : "demand"}
           shadows="percentage"
           camera={{ position: compact ? [14.2, 7.2, 17.8] : [13.2, 7.4, 16.8], fov: compact ? 38 : 35, near: 0.1, far: 70 }}
           gl={{ antialias: true, powerPreference: "high-performance", alpha: false }}
+          fallback={celestialSky ? <div className="factory-fallback" role="img" aria-label="Garment factory illustration">The 3D factory sky is unavailable. All page actions remain usable.</div> : undefined}
           onCreated={({ gl }) => {
             gl.toneMapping = THREE.ACESFilmicToneMapping;
             gl.toneMappingExposure = theme === "dark" ? 1.18 : 1.08;
@@ -315,7 +319,7 @@ export function AnimatedGarmentFactory({ compact = false }: { compact?: boolean 
             gl.shadowMap.type = THREE.PCFSoftShadowMap;
           }}
         >
-          <FactoryScene dark={theme === "dark"} animate={animate} />
+          <FactoryScene dark={theme === "dark"} animate={animate} celestialSky={celestialSky} reducedMotion={reducedMotion} />
         </Canvas>
         <span className="factory-disclaimer">Decorative industrial visualization · not environmental data</span>
       </div>
