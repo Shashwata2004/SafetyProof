@@ -51,6 +51,11 @@ function latest(versions: Version[]) {
   return latestReadyVersions(versions).map((v) => v.id);
 }
 
+function defaultVerification(dossier: Dossier) {
+  const parent = dossier.case.follow_up_of;
+  return latest(parent ? dossier.versions.filter((version) => version.case_id === parent) : dossier.versions);
+}
+
 export function Documents({
   dossier: d,
   token,
@@ -69,7 +74,7 @@ export function Documents({
     [removeDocument, setRemoveDocument] = useState<Doc | null>(null);
   const [err, setErr] = useState(""),
     [busy, setBusy] = useState(false),
-    [selected, setSelected] = useState<string[]>(() => latest(d.versions)),
+    [selected, setSelected] = useState<string[]>(() => defaultVerification(d)),
     [custom, setCustom] = useState(false);
   const [month, setMonth] = useState("");
   const [selectionOpen, setSelectionOpen] = useState(false);
@@ -85,7 +90,7 @@ export function Documents({
               d.case.inspection_on,
               d.prior_case_ids,
             )
-          : latest(d.versions),
+          : defaultVerification(d),
       );
   }, [
     versionKey,
@@ -94,6 +99,7 @@ export function Documents({
     d.documents,
     d.versions,
     d.case.inspection_on,
+    d.case.follow_up_of,
   ]);
   function toggle(v: Version) {
     setCustom(true);
@@ -321,9 +327,15 @@ export function Documents({
           </span>
           <h2>Verify evidence</h2>
           <p>
-            Compare the selected records and review the source passage behind
-            each flag.
+            {d.case.follow_up_of
+              ? "For a documentary follow-up, verify the preceding inspection report and its supporting records. You can prepare this event’s report after reviewing the flags."
+              : "Compare the selected records and review the source passage behind each flag."}
           </p>
+          {d.case.follow_up_of && (month || custom) && (
+            <button onClick={() => void chooseMonth("")} disabled={!writable || busy}>
+              Use previous inspection’s records
+            </button>
+          )}
           <div className="verification-month">
             <label htmlFor="verification-month">Verification month</label>
             <select
