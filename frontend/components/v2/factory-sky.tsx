@@ -52,7 +52,7 @@ export function FactorySky({ reducedMotion }: { reducedMotion: boolean }) {
   const hemisphere = useRef<THREE.HemisphereLight>(null);
   const keyLight = useRef<THREE.DirectionalLight>(null);
   const fill = useRef<THREE.DirectionalLight>(null);
-  const colors = useMemo(() => ({ day: new THREE.Color("#516a74"), night: new THREE.Color("#071017"), haze: new THREE.Color("#6d858d"), warm: new THREE.Color("#fff0d5"), cool: new THREE.Color("#b7cee6"), position: new THREE.Vector3() }), []);
+  const colors = useMemo(() => ({ day: new THREE.Color("#a8c8da"), night: new THREE.Color("#233b50"), haze: new THREE.Color("#bfd4df"), warm: new THREE.Color("#fff0d5"), cool: new THREE.Color("#b7cee6"), position: new THREE.Vector3() }), []);
 
   useFrame(({ camera, gl, invalidate }, delta) => {
     const state = orbit.current;
@@ -109,8 +109,8 @@ export function FactorySky({ reducedMotion }: { reducedMotion: boolean }) {
 
   return (
     <>
-      <color ref={sky} attach="background" args={["#516a74"]} />
-      <fog ref={fog} attach="fog" args={["#6d858d", 22, 48]} />
+      <color ref={sky} attach="background" args={["#a8c8da"]} />
+      <fog ref={fog} attach="fog" args={["#bfd4df", 22, 48]} />
       <ambientLight ref={ambient} intensity={.78} color="#d9e7e9" />
       <hemisphereLight ref={hemisphere} args={["#cddfe9", "#263840", 1.05]} />
       <directionalLight ref={keyLight} position={[-10, 14, 9]} intensity={3.6} castShadow shadow-mapSize={[1536, 1536]} shadow-camera-left={-14} shadow-camera-right={14} shadow-camera-top={12} shadow-camera-bottom={-10} />
