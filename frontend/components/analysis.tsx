@@ -58,6 +58,11 @@ const decisions: Record<Action, string> = {
   request_evidence: "Request evidence",
   comment: "Add comment",
 };
+const recordedDecisions = {
+  ...decisions,
+  accept: "Flag accepted",
+  dismiss: "Flag dismissed",
+};
 
 function plainResult(outcome: Outcome) {
   switch (outcome) {
@@ -444,8 +449,9 @@ function Detail({
   const [note, setNote] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  const [editingAccepted, setEditingAccepted] = useState(false);
-  const accepted = lastReviewAction(r)?.action === "accept";
+  const [editingDecision, setEditingDecision] = useState(false);
+  const decision = lastReviewAction(r)?.action;
+  const decided = decision === "accept" || decision === "dismiss";
   async function record(action: Action) {
     setBusy(true);
     setError("");
@@ -456,7 +462,7 @@ function Detail({
       });
       setNote("");
       await saved();
-      setEditingAccepted(false);
+      setEditingDecision(false);
     } catch (e) {
       setError(message(e));
     } finally {
@@ -528,7 +534,7 @@ function Detail({
         {r.reviews.length ? (
           r.reviews.map((ev) => (
             <div className="review-note" key={ev.id}>
-              <b>{ev.action === "accept" ? "Flag accepted" : decisions[ev.action as Action] || ev.action}</b>
+              <b>{recordedDecisions[ev.action as Action] || ev.action}</b>
               <small>
                 {dateText(ev.created_at)} · {ev.actor || "Deleted account"}
               </small>
@@ -538,17 +544,17 @@ function Detail({
         ) : (
           <p className="muted review-awaiting">Awaiting reviewer decision.</p>
         )}
-        {writable && accepted && (
+        {writable && decided && (
           <button
             disabled={busy}
-            aria-expanded={editingAccepted}
+            aria-expanded={editingDecision}
             aria-controls={`review-editor-${r.id}`}
-            onClick={() => setEditingAccepted(!editingAccepted)}
+            onClick={() => setEditingDecision(!editingDecision)}
           >
-            {editingAccepted ? "Cancel edit" : "Edit review"}
+            {editingDecision ? "Cancel edit" : "Edit review"}
           </button>
         )}
-        {writable && (!accepted || editingAccepted) && (
+        {writable && (!decided || editingDecision) && (
           <div id={`review-editor-${r.id}`}>
             <label>
               Review note
