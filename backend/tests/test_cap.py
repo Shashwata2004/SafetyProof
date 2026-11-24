@@ -125,15 +125,21 @@ def test_explicit_reference_is_recovered_from_source_when_model_omits_it():
 @pytest.mark.parametrize(
     "quote,asset",
     [
-        ("CA-01 for finding FI-17: Clear Exit E-02.", "Exit E-02"),
         ("CA-01 for finding FI-16: Remove cartons from Exit E-03.", "cartons"),
         ("CA-01 for finding FI-16: Clear Exit E-02 in Building B.", "Exit E-02"),
         ("CA-01 for finding FI-16: Clear Exit E-02 on floor 2.", "Exit E-02"),
     ],
 )
-def test_conflicting_finding_asset_building_or_floor_blocks_link(quote, asset):
+def test_explicit_finding_link_surfaces_asset_building_or_floor_conflict(quote, asset):
     f = finding("Finding FI-16. Exit E-02 was obstructed in Building A on floor 1.")
-    assert linkage(f, action(quote, asset)) is None
+    basis, reason = linkage(f, action(quote, asset))
+    assert basis == "explicit_reference_conflict"
+    assert "conflicts" in reason
+
+
+def test_different_explicit_finding_id_does_not_link():
+    f = finding("Finding FI-16. Exit E-02 was obstructed in Building A on floor 1.")
+    assert linkage(f, action("CA-01 for finding FI-17: Clear Exit E-02.", "Exit E-02")) is None
 
 
 def test_unverified_model_reference_cannot_override_source_reference():

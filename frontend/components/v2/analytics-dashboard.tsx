@@ -108,7 +108,7 @@ export function AnalyticsDashboard() {
           ) : (
             <>
               <section className="kpi-grid">
-                <article className="kpi-card highlight"><span>Authorized cases</span><strong>{evidence.cases.length}</strong><small>Visible to this account</small></article>
+                <article className="kpi-card featured"><span>Authorized cases</span><strong>{evidence.cases.length}</strong><small>Visible to this account</small></article>
                 <article className="kpi-card"><span>Evidence findings</span><strong>{evidence.results.length}</strong><small>Selected readable run</small></article>
                 <article className="kpi-card"><span>Supported</span><strong>{summary.counts.Supported}</strong><small>Documentary support found</small></article>
                 <article className="kpi-card"><span>Pending review</span><strong>{pending}</strong><small>Human action required</small></article>

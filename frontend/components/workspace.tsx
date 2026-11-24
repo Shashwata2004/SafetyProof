@@ -6,6 +6,7 @@ import {
   QueryClient,
   QueryClientProvider,
   useQuery,
+  useQueries,
   useQueryClient,
 } from "@tanstack/react-query";
 import {
@@ -45,7 +46,14 @@ import type { components } from "@/lib/schema";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 const qc = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+    },
+  },
 });
 export function Workspace({ basePath = "/workspace" }: { basePath?: string }) {
   return (
@@ -209,6 +217,32 @@ function App({ basePath }: { basePath: string }) {
   }
   const sample = sampleCatalog;
   const current = token && cid ? dossier.data : undefined;
+  const relatedInspectionCases = current?.case.follow_up_root_id
+    ? (cases.data || [])
+        .filter(
+          (item) =>
+            item.follow_up_root_id === current.case.follow_up_root_id &&
+            item.id !== current.case.id &&
+            !!item.inspection_on &&
+            (!current.case.inspection_on ||
+              item.inspection_on < current.case.inspection_on),
+        )
+        .sort(
+          (left, right) =>
+            (left.follow_up_number || 0) - (right.follow_up_number || 0),
+        )
+    : [];
+  const earlierDossiers = useQueries({
+    queries: relatedInspectionCases.map((item) => ({
+      queryKey: ["case", session?.user.id, item.id],
+      queryFn: () => api<Dossier>("/v1/cases/" + item.id, token),
+      enabled:
+        !!token &&
+        current?.role === "reviewer" &&
+        current.case.inspection_kind === "follow_up",
+      staleTime: 30_000,
+    })),
+  });
   if (restoring || (token && identity.isPending))
     return (
       <main className="boot">
@@ -394,6 +428,92 @@ function App({ basePath }: { basePath: string }) {
                             : "View only"}
                     </Tag>
                   </div>
+                  {current.role === "reviewer" &&
+                    current.case.inspection_kind === "follow_up" && (
+                      <section className="panel panel-pad" aria-label="Related inspection files">
+                        <h2>Earlier inspection files</h2>
+                        <p>
+                          Factory documents from earlier inspections in this
+                          series are shown here for reference. They remain
+                          stored with their original inspection.
+                        </p>
+                        {relatedInspectionCases.map((item, index) => {
+                          const earlier = earlierDossiers[index];
+                          const earlierDossier = earlier?.data;
+                          return (
+                            <div className="follow-up-source" key={item.id}>
+                              <button
+                                className="file-row"
+                                onClick={() => go("documents", item.id)}
+                              >
+                                <span className="row-main">
+                                  <b>{item.title}</b>
+                                  <small>
+                                    {dateText(item.inspection_on)}
+                                    {(item.follow_up_number ?? 0) > 0
+                                      ? ` · Follow-up ${item.follow_up_number ?? 0}`
+                                      : " · Initial inspection"}
+                                  </small>
+                                </span>
+                                <ChevronRight size={16} />
+                              </button>
+                              {earlier?.isLoading ? (
+                                <p className="empty-text">Loading earlier factory documents…</p>
+                              ) : earlier?.error ? (
+                                <ErrorNote text={message(earlier.error)} />
+                              ) : earlierDossier?.documents.length ? (
+                                <div className="follow-up-document-list">
+                                  {earlierDossier.documents.map((doc) => {
+                                    const version = earlierDossier.versions
+                                      .filter(
+                                        (entry) =>
+                                          entry.document_id === doc.id &&
+                                          ["ready", "partial"].includes(entry.status),
+                                      )
+                                      .sort((a, b) => b.revision - a.revision)[0];
+                                    return (
+                                      <div className="follow-up-document" key={doc.id}>
+                                        <span>
+                                          <b>{doc.title}</b>
+                                          <small>
+                                            {roles[doc.role]}
+                                            {version
+                                              ? ` · Revision ${version.revision} · ${version.page_count} pages`
+                                              : " · No readable report available"}
+                                          </small>
+                                        </span>
+                                        {version && (
+                                          <button
+                                            className="v2-button secondary"
+                                            onClick={() =>
+                                              setPreview({
+                                                title: doc.title,
+                                                version: version.id,
+                                              })
+                                            }
+                                          >
+                                            Open report
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="empty-text">
+                                  No factory documents were uploaded to this earlier inspection.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {!relatedInspectionCases.length && (
+                          <p className="empty-text">
+                            Earlier inspection files are not available for this case.
+                          </p>
+                        )}
+                      </section>
+                    )}
                   <div
                     className="tabs"
                     role="navigation"
@@ -618,6 +738,11 @@ function App({ basePath }: { basePath: string }) {
                         <span className="row-main">
                           <b>{c.title}</b>
                           <small>{c.factory}</small>
+                          {role === "reviewer" &&
+                            c.inspection_on &&
+                            c.reviewer_id !== session?.user.id && (
+                              <small>Related inspection files shared with you</small>
+                            )}
                           {role === "reviewer" &&
                             reviewerNotifications.data?.some(
                               (item) =>

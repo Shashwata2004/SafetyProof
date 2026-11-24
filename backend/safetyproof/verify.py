@@ -24,6 +24,10 @@ MONTHS = (
     ("december", "dec", "ডিসেম্বর"),
 )
 MONTH_NUMBER = {name: n for n, names in enumerate(MONTHS, 1) for name in names}
+MONTH_PATTERN = "|".join(
+    re.escape(name)
+    for name in sorted(MONTH_NUMBER, key=len, reverse=True)
+)
 
 
 def normalized(value):
@@ -64,6 +68,50 @@ def quoted_dates(text):
         ):
             dates.add(d)
     return dates
+
+
+def stated_period(text):
+    """Infer month bounds only when a month and year are written in the claim."""
+    text = normalized(text)
+    ranged = re.search(
+        rf"\b(?:from\s+)?({MONTH_PATTERN})\s+(?:through|to|until|[-–])\s+"
+        rf"({MONTH_PATTERN})\s+(\d{{4}})\b",
+        text,
+    )
+    if ranged:
+        first, last, year = ranged.groups()
+        start = iso(f"{year}-{MONTH_NUMBER[first]:02}-01")
+        month = MONTH_NUMBER[last]
+        next_month = date(int(year) + (month == 12), month % 12 + 1, 1)
+        return start, date.fromordinal(next_month.toordinal() - 1)
+    named = re.search(rf"\b({MONTH_PATTERN})\s+(\d{{4}})\b", text)
+    if named:
+        month_name, year = named.groups()
+        month = MONTH_NUMBER[month_name]
+        start = iso(f"{year}-{month:02}-01")
+        next_month = date(int(year) + (month == 12), month % 12 + 1, 1)
+        return start, date.fromordinal(next_month.toordinal() - 1)
+    return None, None
+
+
+def assessment_type(target):
+    """Separate claims about written requirements from claims about events."""
+    if target["kind"] == "finding":
+        return "finding_closure"
+    quote = normalized(target["source"]["quote"])
+    requirement = re.compile(
+        r"\b(requires?|must|shall|is required to|are required to|"
+        r"according to (?:the )?(?:sop|procedure|policy)|"
+        r"(?:sop|procedure|policy) (?:states|requires|specifies|instructs))\b"
+    )
+    if requirement.search(quote):
+        return "requirement"
+    if re.search(
+        r"\b(no|none|without|not (?:reported|recorded|occurred|happened))\b",
+        quote,
+    ):
+        return "absence"
+    return "event"
 
 
 def checked_anchor(choice, chunks, pages, versions):
@@ -126,7 +174,7 @@ def literal_scopes(text):
     ]
 
 
-def scope_problem(target, verdict, refs, versions):
+def scope_problem(target, verdict, refs, versions, case_period=None):
     if not verdict["compatible"]:
         return "The passages do not establish a common scope."
     source = versions[target["source"]["version_id"]]
@@ -151,7 +199,10 @@ def scope_problem(target, verdict, refs, versions):
             )
         if normalized(ref["quote"]) == normalized(target["source"]["quote"]):
             return "The second document repeats the statement without independent evidence."
-        if versions[ref["version_id"]]["role"] in {"sop", "cap"}:
+        if (
+            versions[ref["version_id"]]["role"] in {"sop", "cap"}
+            and assessment_type(target) != "requirement"
+        ):
             return "A written plan or procedure does not establish that work happened."
     if target["kind"] == "finding":
         t = iso(
@@ -167,10 +218,19 @@ def scope_problem(target, verdict, refs, versions):
         ):
             return "The supplied passages do not document a later independent verification."
     else:
-        a, b = bounds(
-            target.get("start_date") or source["period_start"],
-            target.get("end_date") or source["period_end"],
-        )
+        if assessment_type(target) == "requirement":
+            # A requirement claim is about what the written rule says, not when
+            # the rule was issued or whether the activity was later performed.
+            return None
+        stated_start, stated_end = stated_period(target["source"]["quote"])
+        if target.get("start_date") or target.get("end_date"):
+            a, b = bounds(target.get("start_date"), target.get("end_date"))
+        elif stated_start or stated_end:
+            a, b = bounds(stated_start, stated_end)
+        elif case_period and re.search(r"\b(?:reporting|coverage|review)\s+period\b", normalized(target["source"]["quote"])):
+            a, b = bounds(case_period.get("period_start"), case_period.get("period_end"))
+        else:
+            a, b = bounds(source["period_start"], source["period_end"])
         c, d = bounds(verdict.get("evidence_start"), verdict.get("evidence_end"))
         if c is None and len({r["version_id"] for r in refs}) == 1:
             doc = versions[refs[0]["version_id"]]
@@ -186,7 +246,16 @@ def scope_problem(target, verdict, refs, versions):
 
 
 async def verify_one(
-    target, initial, all_other, versions, pages, ask, *, unreadable, retrieval_ids
+    target,
+    initial,
+    all_other,
+    versions,
+    pages,
+    ask,
+    *,
+    unreadable,
+    retrieval_ids,
+    case_period=None,
 ):
     inventory = [
         {
@@ -221,6 +290,7 @@ async def verify_one(
     hypothesis = {
         "statement": target["source"]["quote"],
         "kind": target["kind"],
+        "assessment_type": assessment_type(target),
         "scope": {
             k: target.get(k)
             for k in ("asset", "facility", "location", "start_date", "end_date")
@@ -260,6 +330,22 @@ async def verify_one(
         if {c["id"] for c in initial} != {c["id"] for c in all_other}:
             candidates = all_other
             verdict = await evaluate(candidates)
+    elif assessment_type(target) == "absence" and not coverage["full_search"]:
+        # Negative claims need an exhaustive search: one matching passage does
+        # not show that another selected record contains a contrary event.
+        if unreadable:
+            return result(
+                "not_assessed",
+                "Some selected pages could not be read, so the absence claim cannot be checked completely.",
+            )
+        if sum(len(c["text"]) for c in all_other) > ABSENCE_LIMIT:
+            return result(
+                "not_assessed",
+                "The selected records are too large for a complete check of this absence claim.",
+            )
+        coverage["full_search"] = True
+        candidates = all_other
+        verdict = await evaluate(candidates)
     allowed = {c["id"]: c for c in candidates}
     refs = []
     for selected in verdict["evidence"]:
@@ -278,7 +364,7 @@ async def verify_one(
                 "needs_review",
                 "The verifier supplied no traceable evidence for this conclusion.",
             )
-        issue = scope_problem(target, verdict, refs, versions)
+        issue = scope_problem(target, verdict, refs, versions, case_period)
         if issue:
             return result("needs_review", issue, refs)
         checks["scope"] = "compatible"
@@ -322,11 +408,14 @@ async def verify_one(
 
 async def run_verification(db, ai, job, run, step):
     manifest = run["manifest"]
+    case_period = await db.one(
+        "cases", job["case_id"], fields="period_start,period_end"
+    )
     versions = {v["id"]: v for v in manifest}
-    query = {
-        "case_id": "eq." + job["case_id"],
-        "version_id": "in.(" + ",".join(versions) + ")",
-    }
+    # Version IDs are globally unique. A follow-up run may include versions
+    # from earlier cases in the same inspection series, so filtering these
+    # source rows by the current case would silently drop their evidence.
+    query = {"version_id": "in.(" + ",".join(versions) + ")"}
     pages = {p["id"]: p for p in await db.rows("pages", filters=query)}
     chunks = await db.rows(
         "chunks",
@@ -449,6 +538,7 @@ async def run_verification(db, ai, job, run, step):
             ask,
             unreadable=limited,
             retrieval_ids=retrieved,
+            case_period=case_period,
         )
         await step("result", {"id": rid, **assessment})
     if any(version["role"] == "cap" for version in manifest):

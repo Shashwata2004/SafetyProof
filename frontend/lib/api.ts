@@ -13,7 +13,12 @@ export function apiBase(): string {
   );
 }
 type Schema = components["schemas"];
-export type Case = Schema["CaseRecord"];
+export type Case = Schema["CaseRecord"] & {
+  inspection_kind?: "initial" | "follow_up";
+  follow_up_of?: string | null;
+  follow_up_root_id?: string | null;
+  follow_up_number?: number;
+};
 export type Ref = Schema["EvidenceRef"];
 export type Review = Schema["ReviewEvent"];
 export type Action = Schema["ReviewInput"]["action"];
@@ -42,10 +47,17 @@ export type Catalog = {
   period_end: string;
   documents: Meta[];
 };
-export type Doc = { id: string; title: string; role: Role };
+export type Doc = {
+  id: string;
+  title: string;
+  role: Role;
+  case_id?: string;
+  source_case_title?: string | null;
+};
 export type Version = Meta & {
   id: string;
   document_id: string;
+  case_id?: string;
   revision: number;
   status: string;
   page_count: number;
@@ -114,6 +126,7 @@ export type Dossier = {
   role: "reviewer" | "viewer" | "manager";
   documents: Doc[];
   versions: Version[];
+  prior_case_ids?: string[];
   runs: Run[];
   jobs: Job[];
 };
@@ -164,7 +177,7 @@ export type CapAction = {
 export type CapSuggestion = {
   finding_id: string;
   action_id: string;
-  basis: "explicit_reference" | "same_asset";
+  basis: "explicit_reference" | "explicit_reference_conflict" | "same_asset";
   reason: string;
 };
 export type CapAnalysis = {

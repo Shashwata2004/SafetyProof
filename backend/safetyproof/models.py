@@ -159,6 +159,10 @@ class CaseRecord(CaseInput):
     created_by: UUID | None
     reviewer_id: UUID | None = None
     inspection_on: date | None = None
+    inspection_kind: Literal["initial", "follow_up"] = "initial"
+    follow_up_of: UUID | None = None
+    follow_up_root_id: UUID | None = None
+    follow_up_number: int = 0
     manager_notified_at: str | None = None
     created_at: str
     archived: bool

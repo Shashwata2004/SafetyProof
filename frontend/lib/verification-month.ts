@@ -4,6 +4,7 @@ type RecordVersion = Pick<
   Version,
   | "id"
   | "document_id"
+  | "case_id"
   | "revision"
   | "status"
   | "issued_on"
@@ -73,6 +74,7 @@ export function documentsForMonth(
   versions: RecordVersion[],
   month: string,
   scheduledOn?: string | null,
+  priorCaseIds: string[] = [],
 ): string[] {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return [];
   const start = `${month}-01`;
@@ -99,6 +101,11 @@ export function documentsForMonth(
     }),
   );
   const selected = new Map(current.map((v) => [v.document_id, v]));
+  const priorCases = new Set(priorCaseIds);
+  const priorVersions = latestReadyVersions(
+    versions.filter((v) => priorCases.has(v.case_id || "")),
+  );
+  for (const v of priorVersions) selected.set(v.document_id, v);
   const context = latestReadyVersions(
     available.filter((v) => {
       const kind = role.get(v.document_id);

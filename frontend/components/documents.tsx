@@ -83,6 +83,7 @@ export function Documents({
               d.versions,
               month,
               d.case.inspection_on,
+              d.prior_case_ids,
             )
           : latest(d.versions),
       );
@@ -228,7 +229,11 @@ export function Documents({
                     <small>
                       {roles[doc.role]} · Revision {v.revision} · {v.filename}
                     </small>
-                    <small>Factory · {d.case.factory}</small>
+                    <small>
+                      {doc.source_case_title
+                        ? `Earlier inspection · ${doc.source_case_title}`
+                        : `Factory · ${d.case.factory}`}
+                    </small>
                     <div className="row-meta">
                       <Tag
                         tone={
@@ -348,9 +353,9 @@ export function Documents({
           </p>
           {month && (
             <p className="hint">
-              Includes this month’s records, the previous inspection, CAPs and
-              procedures available by month-end. Check for any missing drill or
-              follow-up records and adjust the selection below.
+              Includes this month’s records and ready documents from earlier
+              inspections in this follow-up series. Check for missing records
+              and adjust the selection below.
             </p>
           )}
           <details
@@ -381,6 +386,9 @@ export function Documents({
                         <small>
                           {roles[doc.role]} · Revision {v.revision}
                         </small>
+                        {doc.source_case_title && (
+                          <small>Earlier inspection · {doc.source_case_title}</small>
+                        )}
                         <small>
                           {v.period_start || v.issued_on || "Date not provided"}
                           {v.period_end && v.period_end !== v.period_start
@@ -1030,7 +1038,7 @@ function Upload({
       : null;
   const semanticFailureMessage =
     extracted?.content_check === "unavailable"
-      ? "Gemini could not complete the content check. Check the server configuration and retry."
+      ? "The local content check could not complete. Choose a readable PDF and try again."
       : extracted?.content_check === "uncertain"
         ? `The report content could not be confirmed: ${extracted.content_reason || "the text is too ambiguous or incomplete."} Choose a clearer inspection report PDF.`
         : `Invalid document: ${extracted?.content_reason || "the content is not an inspection report."} Choose a relevant inspection report PDF.`;
@@ -1053,7 +1061,7 @@ function Upload({
           ? "The document type is unclear from the full PDF. Choose the record type manually; the complete PDF will then be checked against it."
           : `The selected factory record type could not be confirmed: ${extracted.content_reason || "the PDF text is too ambiguous or incomplete."} Choose a clearer PDF.`
         : extracted?.content_check === "unavailable"
-          ? extracted.content_reason || "Gemini could not check this factory document. Retry when the service is available."
+          ? extracted.content_reason || "The local content check could not complete. Choose a readable PDF and try again."
           : extracted?.content_check === "unreadable"
             ? "Invalid document: no readable text was found, so its factory record type cannot be checked. Choose a readable PDF."
             : extracted?.content_check === "not_configured" && extracted.role !== role
@@ -1320,8 +1328,8 @@ function Upload({
         )}
         {(inspection || factoryRecord) && extracted?.content_check === "not_configured" && (
           <p className="callout" role="status">
-            Gemini content screening is not configured. Only basic OCR document
-            type checks are active.
+            Local OCR content checks are active. They check document type and
+            structure, not whether the document's claims are true.
           </p>
         )}
         {(inspection || factoryRecord) && extracted?.content_check === "unreadable" && (
