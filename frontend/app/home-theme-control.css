@@ -1,0 +1,15 @@
+.public-brand-controls { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.home-theme-control { flex-shrink: 0; border-radius: 50%; }
+.home-theme-indicator { display: grid; width: 20px; height: 20px; transition: transform 600ms cubic-bezier(.22,.68,.3,1); }
+.home-theme-indicator svg { grid-area: 1 / 1; transition: opacity 600ms ease; }
+.home-theme-sun { opacity: 1; color: #ffd18a; }
+.home-theme-moon { opacity: 0; color: #d4e9ff; }
+:root[data-theme="dark"] .home-theme-sun { opacity: 0; }
+:root[data-theme="dark"] .home-theme-moon { opacity: 1; }
+@media (max-width: 620px) {
+  .public-brand-controls { gap: 8px; }
+  .home-theme-control { width: 38px; height: 38px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-theme-indicator, .home-theme-indicator svg { transition: none; }
+}

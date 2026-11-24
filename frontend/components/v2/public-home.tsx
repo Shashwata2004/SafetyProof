@@ -5,6 +5,7 @@ import { Building2, CheckCircle2, ClipboardCheck, FileSearch, Files, ScanSearch,
 import { AnimatedGarmentFactory } from "./animated-garment-factory";
 import { ScrollReveal } from "./scroll-reveal";
 import { ThemeToggle } from "./theme-toggle";
+import { HomeThemeControl } from "./home-theme-control";
 import { useAuth } from "./auth-provider";
 
 const steps = [
@@ -26,10 +27,13 @@ export function PublicHome() {
         </div>
         <div className="industrial-vignette" />
         <header className="public-header v2-container">
-          <Link href="/" className="public-brand industrial-brand" aria-label="SafetyProof AI home">
-            <span><ShieldCheck aria-hidden="true" /></span>
-            <strong>SafetyProof <em>AI</em></strong>
-          </Link>
+          <div className="public-brand-controls">
+            <HomeThemeControl />
+            <Link href="/" className="public-brand industrial-brand" aria-label="SafetyProof AI home">
+              <span><ShieldCheck aria-hidden="true" /></span>
+              <strong>SafetyProof <em>AI</em></strong>
+            </Link>
+          </div>
           <nav aria-label="Public navigation">
             <a href="#how-it-works">How it works</a>
             <a href="#features">Capabilities</a>
