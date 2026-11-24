@@ -22,7 +22,7 @@ export function PublicHome() {
       <noscript><style>{`.scroll-reveal,.scroll-reveal>*{opacity:1!important;transform:none!important}`}</style></noscript>
       <section className="industrial-hero">
         <div className="industrial-scene" aria-hidden="true">
-          <AnimatedGarmentFactory />
+          <AnimatedGarmentFactory celestialSky />
         </div>
         <div className="industrial-vignette" />
         <header className="public-header v2-container">
